@@ -26,17 +26,22 @@
             }
         }
     </script>
-    <!-- 引入傳統 CDN 資源 (UMD 版本) -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://unpkg.com/lucide-react@latest"></script>
-    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
-    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.3/babel.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide-react@latest/dist/umd/lucide-react.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/framer-motion/10.16.4/framer-motion.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.0/Recharts.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/date-fns/2.30.0/date_fns.min.js"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@google/genai@1.29.0/dist/index.min.js"></script>
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
 
@@ -98,12 +103,12 @@
     <div id="root"></div>
 
     <script>
-        // 資源載入檢查 (非 Babel 編譯區，確保最快執行)
+        // 資源載入檢查
         window.addEventListener('load', () => {
             const missing = [];
             if (typeof React === 'undefined') missing.push('React');
             if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
-            if (typeof LucideReact === 'undefined') missing.push('LucideReact');
+            if (typeof lucideReact === 'undefined' && typeof LucideReact === 'undefined') missing.push('LucideReact');
             if (typeof Recharts === 'undefined') missing.push('Recharts');
             if (typeof dateFns === 'undefined') missing.push('date-fns');
             
@@ -126,17 +131,23 @@
     </script>
 
     <script type="text/babel">
-        // 使用 LucideReact 作為 React 元件來源
-        const lucide = LucideReact;
+        // --- 修正變數讀取 ---
+        // 處理 Lucide 名稱差異
+        const lucide = window.lucideReact || window.LucideReact;
+        // 處理 Framer Motion 名稱差異
         const { motion, AnimatePresence } = window.Motion || window.framerMotion || { motion: ({children}) => <div>{children}</div>, AnimatePresence: ({children}) => children };
+        
+        // 確保從 window 正確讀取 Recharts 與 dateFns
         const { 
             PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
             Tooltip, Legend, LineChart, Line, AreaChart, Area 
-        } = Recharts;
+        } = window.Recharts;
+        
         const { 
             format, startOfMonth, endOfMonth, isWithinInterval, subMonths, 
             isBefore, addMonths, parseISO, differenceInDays 
-        } = dateFns;
+        } = window.dateFns;
+        
         const { GoogleGenAI } = window.googleGenai || {};
 
         // --- Constants & Types ---
