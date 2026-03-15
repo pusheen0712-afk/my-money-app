@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>日系簡約記帳本-內嵌版</title>
+    <style>
+        /* 100% 自定義樣式，不依賴外部 CSS */
+        :root { --blue: #6B8EAD; --bg: #F4F1ED; --card: #FFFFFF; --text: #333; --gray: #999; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        
+        /* 標題列 */
+        header { background: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; }
+        h1 { font-size: 18px; margin: 0; color: var(--blue); }
+        .top-btns { display: flex; gap: 15px; }
+
+        /* 主內容區 */
+        #main { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 100px; }
+        .summary-card { background: var(--blue); color: white; padding: 25px; border-radius: 20px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .summary-card p { margin: 0; opacity: 0.8; font-size: 12px; }
+        .summary-card h2 { margin: 5px 0 0 0; font-size: 28px; }
+
+        /* 清單卡片 */
+        .item { background: white; padding: 15px; border-radius: 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #eee; }
+        .item-info { display: flex; items-center: center; gap: 10px; }
+        .item-icon { font-size: 20px; }
+        .item-title { font-weight: bold; font-size: 14px; }
+        .item-sub { font-size: 10px; color: var(--gray); }
+        .amt-neg { color: #d9534f; font-weight: bold; }
+        .amt-pos { color: #5cb85c; font-weight: bold; }
+
+        /* 底部導覽 */
+        nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; padding: 10px; border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
+        .nav-btn { background: none; border: none; display: flex; flex-direction: column; align-items: center; gap: 5px; color: var(--gray); font-size: 10px; cursor: pointer; flex: 1; }
+        .nav-btn.active { color: var(--blue); font-weight: bold; }
+
+        /* 懸浮按鈕 */
+        .fab { position: fixed; bottom: 70px; right: 20px; width: 56px; height: 56px; background: var(--blue); color: white; border-radius: 28px; border: none; font-size: 28px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+
+        /* 彈窗 */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: flex-end; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; width: 100%; border-radius: 20px 20px 0 0; padding: 20px; }
+        input, select { width: 100%; padding: 12px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; }
+        .btn-submit { width: 100%; padding: 15px; background: var(--blue); color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 id="page-name">帳務明細</h1>
+        <div class="top-btns">
+            <span onclick="toggle('aiModal')" style="cursor:pointer">✨</span>
+            <span onclick="toggle('setModal')" style="cursor:pointer">⚙️</span>
+        </div>
+    </header>
+
+    <div id="main"></div>
+
+    <button class="fab" onclick="showForm()">＋</button>
+
+    <nav>
+        <div class="nav-btn active" onclick="tab('acc', this)"><span>📅</span><span>帳務</span></div>
+        <div class="nav-btn" onclick="tab('card', this)"><span>💳</span><span>卡片</span></div>
+        <div class="nav-btn" onclick="tab('bank', this)"><span>🏦</span><span>網銀</span></div>
+        <div class="nav-btn" onclick="tab('stock', this)"><span>📈</span><span>股票</span></div>
+        <div class="nav-btn" onclick="tab('memo', this)"><span>📝</span><span>備忘</span></div>
+    </nav>
+
+    <div id="formModal" class="modal" onclick="toggle('formModal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 id="form-title" style="margin-top:0;">新增紀錄</h3>
+            <div id="fields"></div>
+            <button class="btn-submit" onclick="save()">儲存</button>
+        </div>
+    </div>
+
+    <div id="setModal" class="modal" onclick="toggle('setModal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3>設定</h3>
+            <p style="font-size:12px; color:gray;">Gemini API Key (若公司封鎖網路，AI將失效)</p>
+            <input type="password" id="key-input" placeholder="請貼上 API Key">
+            <button class="btn-submit" onclick="saveKey()">儲存金鑰</button>
+            <button onclick="localStorage.clear();location.reload();" style="width:100%;margin-top:10px;background:none;border:none;color:red;">清除所有資料</button>
+        </div>
+    </div>
+
+    <script>
+        // 資料庫初始化
+        let cur = 'acc';
+        let db = {
+            acc: JSON.parse(localStorage.getItem('c_acc') || '[]'),
+            card: JSON.parse(localStorage.getItem('c_card') || '[]'),
+            bank: JSON.parse(localStorage.getItem('c_bank') || '[]'),
+            stock: JSON.parse(localStorage.getItem('c_stock') || '[]'),
+            memo: JSON.parse(localStorage.getItem('c_memo') || '[]'),
+            key: localStorage.getItem('c_key') || ''
+        };
+
+        const EMOJI = {'食':'🍱','衣':'👕','住':'🏠','行':'🚌','育':'📚','樂':'🎮','醫':'🏥','投':'💰','股':'📈','他':'📦'};
+
+        function render() {
+            const main = document.getElementById('main');
+            const pName = document.getElementById('page-name');
+            let h = '';
+
+            if(cur === 'acc') {
+                pName.innerText = '帳務明細';
+                let total = db.acc.reduce((s,t)=> s + (t.type==='in'?t.amt:-t.amt), 0);
+                h = `<div class="summary-card"><p>目前總結餘</p><h2>$ ${total.toLocaleString()}</h2></div>`;
+                h += db.acc.map((t,i)=> `
+                    <div class="item" onclick="del('acc',${i})">
+                        <div class="item-info"><span class="item-icon">${EMOJI[t.cat]||'📦'}</span>
+                        <div><div class="item-title">${t.title}</div><div class="item-sub">${t.date}</div></div></div>
+                        <div class="${t.type==='in'?'amt-pos':'amt-neg'}">${t.type==='in'?'+':'-'}${t.amt}</div>
+                    </div>`).join('');
+            } else if(cur === 'card') {
+                pName.innerText = '信用卡管理';
+                h = db.card.map((c,i)=> `<div class="item" onclick="del('card',${i})"><div><div class="item-title">${c.name}</div><div class="item-sub">${c.bank}</div></div><div>回饋 ${c.rate}%</div></div>`).join('');
+            } else if(cur === 'bank') {
+                pName.innerText = '網銀資產';
+                h = db.bank.map((b,i)=> `<div class="item" onclick="del('bank',${i})"><div><div class="item-title">${b.bank}</div><div class="item-sub">APY ${b.apy}%</div></div><div style="font-weight:bold;">$ ${Number(b.bal).toLocaleString()}</div></div>`).join('');
+            } else if(cur === 'stock') {
+                pName.innerText = '投資組合';
+                let sVal = db.stock.reduce((s,st)=> s + (st.p * st.q), 0);
+                h = `<div class="summary-card" style="background:#81C784;"><p>股票總市值</p><h2>$ ${sVal.toLocaleString()}</h2></div>`;
+                h += db.stock.map((s,i)=> `<div class="item" onclick="del('stock',${i})"><div><div class="item-title">${s.name}</div><div class="item-sub">${s.code} | ${s.q}股</div></div><div style="font-weight:bold;">$ ${(s.p*s.q).toLocaleString()}</div></div>`).join('');
+            } else if(cur === 'memo') {
+                pName.innerText = '備忘 / 分帳';
+                h = db.memo.map((m,i)=> `<div class="item" onclick="del('memo',${i})"><div><div class="item-title">${m.title}</div><div class="item-sub">對象: ${m.who}</div></div><div style="color:var(--blue);font-weight:bold;">$ ${m.amt}</div></div>`).join('');
+            }
+
+            main.innerHTML = h || '<div style="text-align:center;padding-top:100px;color:#ccc;">🍵 目前無紀錄</div>';
+            localStorage.setItem('c_'+cur, JSON.stringify(db[cur]));
+        }
+
+        function tab(t, el) {
+            cur = t;
+            document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+            el.classList.add('active');
+            render();
+        }
+
+        function showForm() {
+            let f = document.getElementById('fields');
+            let t = document.getElementById('form-title');
+            f.innerHTML = '';
+            if(cur==='acc'){ t.innerText='新增帳務'; f.innerHTML=`<input id="i1" placeholder="項目"><input id="i2" type="number" placeholder="金額"><select id="i3"><option value="ex">支出</option><option value="in">收入</option></select><select id="i4">${Object.keys(EMOJI).map(k=>`<option value="${k}">${k}</option>`).join('')}</select>`; }
+            else if(cur==='card'){ t.innerText='新增卡片'; f.innerHTML=`<input id="i1" placeholder="銀行"><input id="i2" placeholder="卡名"><input id="i3" type="number" placeholder="回饋%">`; }
+            else if(cur==='bank'){ t.innerText='新增網銀'; f.innerHTML=`<input id="i1" placeholder="銀行"><input id="i2" type="number" placeholder="餘額"><input id="i3" type="number" placeholder="APY%">`; }
+            else if(cur==='stock'){ t.innerText='新增持股'; f.innerHTML=`<input id="i1" placeholder="股名"><input id="i2" placeholder="代號"><input id="i3" type="number" placeholder="股數"><input id="i4" type="number" placeholder="成本">`; }
+            else if(cur==='memo'){ t.innerText='新增備忘'; f.innerHTML=`<input id="i1" placeholder="內容"><input id="i2" placeholder="對象"><input id="i3" type="number" placeholder="金額">`; }
+            toggle('formModal');
+        }
+
+        function save() {
+            let v1 = document.getElementById('i1')?.value, v2 = document.getElementById('i2')?.value, v3 = document.getElementById('i3')?.value, v4 = document.getElementById('i4')?.value;
+            if(!v1) return;
+            if(cur==='acc') db.acc.unshift({title:v1, amt:Number(v2), type:v3, cat:v4, date:new Date().toLocaleDateString()});
+            else if(cur==='card') db.card.push({bank:v1, name:v2, rate:v3});
+            else if(cur==='bank') db.bank.push({bank:v1, bal:v2, apy:v3});
+            else if(cur==='stock') db.stock.push({name:v1, code:v2, q:Number(v3), p:Number(v4)});
+            else if(cur==='memo') db.memo.push({title:v1, who:v2, amt:v3});
+            toggle('formModal');
+            render();
+        }
+
+        function del(t, i) { if(confirm('要刪除嗎？')){ db[t].splice(i,1); render(); } }
+        function toggle(id) { let m=document.getElementById(id); m.classList.toggle('active'); }
+        function saveKey() { db.key = document.getElementById('key-input').value; localStorage.setItem('c_key', db.key); toggle('setModal'); alert('金鑰已存'); }
+
+        document.getElementById('key-input').value = db.key;
+        render();
+    </script>
+</body>
+</html>
