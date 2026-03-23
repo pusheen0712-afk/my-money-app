@@ -1,0 +1,3757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pusheen記帳本</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com" crossorigin></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Zen Maru Gothic"', 'sans-serif'],
+                    },
+                    colors: {
+                        fuji: '#6B8EAD',
+                        snow: '#F9F9F9',
+                        warm: '#D1D1D1',
+                    },
+                    borderRadius: {
+                        '3xl': '1.5rem',
+                        '4xl': '2rem',
+                        '5xl': '2.5rem',
+                    },
+                    boxShadow: {
+                        'soft': '0 20px 40px rgba(92,127,176,0.25)',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- 引入傳統 CDN 資源 (UMD 版本) -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script>window.react = window.React;</script>
+
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js" crossorigin></script>
+
+    <script src="https://unpkg.com/recharts@2.1.9/umd/Recharts.js" crossorigin></script>
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.min.js" crossorigin></script>
+
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js" crossorigin></script>
+    <script src="https://unpkg.com/date-fns@3.6.0/cdn.min.js" crossorigin></script>
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin></script>
+
+    <script src="https://unpkg.com/@babel/standalone@7/babel.min.js" crossorigin></script>
+
+    <script type="module">
+        import { GoogleGenAI, Type } from 'https://cdn.jsdelivr.net/npm/@google/genai@1.29.0/dist/web/index.min.mjs';
+        window.GoogleGenAI = GoogleGenAI;
+        window.Type = Type;
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap');
+
+        :root {
+            --fuji-blue: #6B8EAD;
+            --snow-white: #F9F9F9;
+            --warm-gray: #D1D1D1;
+        }
+
+        body {
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background-color: #F4F1ED;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* 模擬 App 點擊回饋 */
+        .active-scale:active {
+            transform: scale(0.95);
+        }
+
+        /* 自定義動畫 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        #loading-screen {
+            position: fixed;
+            inset: 0;
+            background: #F4F1ED;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="w-12 h-12 border-4 border-[#6B8EAD] border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-[#6B8EAD] font-bold animate-pulse">Pusheen記帳本 載入中...</p>
+    </div>
+    <div id="root"></div>
+
+    <script>
+        // 捕捉所有未預期的錯誤並顯示在畫面上
+        window.onerror = function(message, source, lineno, colno, error) {
+            const loader = document.getElementById('loading-screen');
+            if (loader) {
+                loader.innerHTML = `
+                    <div class="p-8 text-center bg-white rounded-3xl shadow-xl max-w-xs mx-auto z-50 relative">
+                        <p class="text-red-500 font-bold mb-4 text-lg">發生未預期錯誤</p>
+                        <p class="text-xs text-gray-600 mb-2 text-left break-all">${message}</p>
+                        <p class="text-xs text-gray-400 mb-4 text-left break-all">Line: ${lineno}:${colno}</p>
+                        <button onclick="window.location.reload()" class="w-full py-3 bg-[#6B8EAD] text-white rounded-2xl font-bold active:scale-95 transition-transform">重新整理</button>
+                    </div>
+                `;
+                loader.style.opacity = '1';
+            }
+        };
+
+        // 資源載入檢查 (非 Babel 編譯區，確保最快執行)
+        window.addEventListener('load', () => {
+            const missing = [];
+            if (typeof React === 'undefined') missing.push('React');
+            if (typeof ReactDOM === 'undefined') missing.push('ReactDOM');
+            if (typeof LucideReact === 'undefined') missing.push('LucideReact');
+            if (typeof PropTypes === 'undefined') missing.push('PropTypes');
+            if (typeof Recharts === 'undefined') missing.push('Recharts');
+            if (typeof dateFns === 'undefined') missing.push('date-fns');
+            
+            if (missing.length > 0) {
+                const loader = document.getElementById('loading-screen');
+                if (loader) {
+                    loader.innerHTML = `
+                        <div class="p-8 text-center bg-white rounded-3xl shadow-xl max-w-xs mx-auto">
+                            <p class="text-red-500 font-bold mb-4 text-lg">資源載入失敗</p>
+                            <p class="text-sm text-gray-600 mb-2">請檢查網路連線，以下套件無法從 CDN 載入：</p>
+                            <div class="bg-red-50 p-3 rounded-2xl text-xs text-red-700 font-mono mb-4">
+                                ${missing.join('<br>')}
+                            </div>
+                            <button onclick="window.location.reload()" class="w-full py-3 bg-[#6B8EAD] text-white rounded-2xl font-bold active:scale-95 transition-transform">重新整理</button>
+                        </div>
+                    `;
+                }
+            }
+        });
+    </script>
+
+    <script type="text/babel" data-presets="typescript,react">
+
+const { useState, useMemo, useEffect, useRef, useCallback } = React;
+const { Wallet, CreditCard, Landmark, NotebookPen, Plus, X, ChevronLeft, ChevronRight, CheckCircle2, Circle, Trash2, Edit2, Search, AlertCircle, TrendingUp, RefreshCw, Calendar, PieChart: PieChartIcon, Globe, Download, Send, BrainCircuit, Sparkles, Mic, ArrowDownLeft, ArrowUpRight, Settings } = window.LucideReact;
+const { motion, AnimatePresence } = window.Motion;
+const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip: RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } = window.Recharts;
+const { format, parseISO, isAfter, isBefore, isEqual, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, isValid, differenceInDays, addDays } = window.dateFns;
+
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+
+// --- Types ---
+type TxType = 'expense' | 'income';
+interface Transaction {
+  id: string;
+  title: string;
+  amount: number;
+  type: TxType;
+  category: string;
+  date: string;
+  paymentMethod: string;
+  bank: string;
+  location: '國內' | '國外';
+  currency: string;
+  convertedAmount: number;
+  notes: string;
+  projectName?: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  status: 'Active' | 'Archived';
+  currency: string;
+  location: '國內' | '國外';
+}
+
+interface Card {
+  id: string;
+  bank: string;
+  name: string;
+  expiry: string; // YYYY-MM
+  spendingLimit: number; // 刷卡上限
+  cashbackRate: number; // 回饋比例 (%)
+  channels: string;
+  cashbackExpiry: string; // 回饋有效日期 YYYY-MM-DD
+  notes: string; // 備註
+  billingDate?: string; // 結帳日
+  paymentMethod?: string; // 繳款方式
+  deductionBank?: string; // 繳款銀行
+  sortOrder?: number; // 自訂排序
+  // 專案編輯欄位
+  intlProjectName?: string;
+  intlDesc?: string;
+  intlCashbackRate?: number;
+  intlCashbackLimit?: string;
+  intlCashbackExpiry?: string;
+  intlThreshold?: string;
+  intlNotes?: string;
+  showIntl?: boolean;
+}
+
+interface CollectionRecord {
+  id: string;
+  title: string;
+  date: string;
+  amount: number;
+  notes: string;
+}
+
+interface BankTask {
+  id: string;
+  description: string;
+  isCompleted: boolean;
+}
+
+interface PocketAccount {
+  id: string;
+  name: string;
+  balance: number;
+  apy: number;
+  duration: string;
+  endDate: string;
+}
+
+interface BankAccount {
+  id: string;
+  bank: string;
+  balance: number;
+  lastUpdated: string; // YYYY-MM-DD
+  apy: number; // 年利率 %
+  highInterestLimit: number; // 高利額度
+  payoutDay: number; // 每月幾號發息
+  tasks: BankTask[];
+  pockets: PocketAccount[];
+}
+
+interface Memo {
+  id: string;
+  title: string;
+  person: string;
+  amount: number;
+  type: 'monthly' | 'one-time' | 'custom';
+  startDate: string; // YYYY-MM or YYYY-MM-DD
+  isSettled?: boolean;
+  payments: { [month: number]: boolean }; // 1-12
+  records: CollectionRecord[];
+  customMonths?: number[];
+}
+
+interface StockTransaction {
+  id: string;
+  date: string;
+  type: 'single' | 'recurring';
+  shares: number;
+  amount: number;
+  price?: number;
+  originalDay?: number;
+  securitiesBank?: string;
+}
+
+interface RecurringSetting {
+  id: string;
+  day: number;
+  amount: number;
+  startDate: string;
+}
+
+interface Stock {
+  id: string;
+  name: string;
+  code: string;
+  shares: number; // 總持有股數
+  historicalCost: number; // 總投入本金
+  lastUpdated: string;
+  transactions: StockTransaction[];
+  // 定期定額設定
+  recurringSettings: RecurringSetting[];
+  latestPrice?: number;
+}
+
+interface StockOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+// --- Initial Data ---
+const initialCategories = ['飲食', '交通', '代墊', '生活', '娛樂', '購物', '醫療', '工作', '股票', '旅遊'];
+const initialPaymentMethods = ['現金', '銀行轉帳', '信用卡', 'Line pay', 'Line pay money'];
+
+const categoryColors = {
+  '飲食': 'bg-orange-100 text-orange-600',
+  '代墊': 'bg-purple-100 text-purple-600',
+  '生活': 'bg-green-100 text-green-600',
+  '娛樂': 'bg-pink-100 text-pink-600',
+  '購物': 'bg-blue-100 text-blue-600',
+  '醫療': 'bg-red-100 text-red-600',
+  '工作': 'bg-indigo-100 text-indigo-600',
+  '交通': 'bg-teal-100 text-teal-600',
+  '股票': 'bg-yellow-100 text-yellow-700',
+  '旅遊': 'bg-sky-100 text-sky-600',
+};
+
+const getCategoryColor = (category: string, type: 'expense' | 'income') => {
+  if (categoryColors[category]) return categoryColors[category];
+  return type === 'expense' ? 'bg-gray-100 text-gray-600' : 'bg-emerald-100 text-emerald-600';
+};
+const initialTransactions: Transaction[] = [];
+const itemCategoryMap = {
+  '早餐': '飲食',
+  '午餐': '飲食',
+  '晚餐': '飲食',
+  '飲料': '飲食',
+  '點心': '飲食',
+  '通訊費': '生活',
+  '日常用品': '生活',
+  '房租': '生活',
+  '水電費': '生活',
+  '電影': '娛樂',
+  '周邊': '娛樂',
+  '漫畫': '娛樂',
+  '小說': '娛樂',
+  'Netflix': '娛樂',
+  'Spotify': '娛樂',
+  '衣服': '購物',
+  '美妝': '購物',
+  '保養': '購物',
+  '鞋子': '購物',
+  '化妝品': '購物',
+  '停車費': '交通',
+  '大保養': '交通',
+  '計程車': '交通',
+  '加油': '交通',
+};
+const initialCards: Card[] = [
+  { 
+    id: 'c1', bank: '台新銀行', name: 'Richart @GoGo卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 3.8, channels: 'Line pay, 全支付', cashbackExpiry: '2024-11-30', notes: '網購/行動支付神卡', billingDate: '每月20號', paymentMethod: '每月7號出帳', deductionBank: '台新Richart', sortOrder: 1,
+    intlProjectName: '國外回饋', intlCashbackRate: 3.3, intlCashbackLimit: '無上限 (額度內)', intlCashbackExpiry: '2026-06-30', intlNotes: '回饋台新 Point；含歐洲與海外網購。', intlDesc: '需切換至「玩旅刷」模式。', showIntl: false
+  },
+  { 
+    id: 'c2', bank: '星展銀行', name: 'eco永續極簡卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 2, channels: '國內外一般消費', cashbackExpiry: '2024-12-31', notes: '無腦刷', billingDate: '每月2號', paymentMethod: '每月12號出帳', deductionBank: '星展digbank', sortOrder: 2,
+    intlProjectName: '國外回饋', intlCashbackRate: 7.5, intlCashbackLimit: '12,000 TWD', intlCashbackExpiry: '2026-03-31', intlNotes: '加碼上限 600 點 + 任務上限 300 點。', intlDesc: '指定地區含日韓泰新美歐。', showIntl: false
+  },
+  { 
+    id: 'c3', bank: '星展銀行', name: '傳說對決聯名卡', expiry: '2028-12', spendingLimit: 10000, cashbackRate: 10, channels: 'Line pay, 街口, 網購', cashbackExpiry: '2024-12-31', notes: '主力卡', billingDate: '每月2號', paymentMethod: '每月12號出帳', deductionBank: '星展digbank', sortOrder: 3,
+    intlProjectName: '國內外回饋', intlCashbackRate: 10.0, intlCashbackLimit: '13,333 TWD', intlCashbackExpiry: '2026-06-30', intlNotes: '加碼上限 1,000 點，與 LINE Pay 等通路共用額度。', intlDesc: '適合 App Store、Google Play。', showIntl: false
+  },
+  { 
+    id: 'c9', bank: '星展銀行', name: 'eco永續卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 1.5, channels: '國內外一般消費', cashbackExpiry: '2024-12-31', notes: '永續消費', billingDate: '每月2號', paymentMethod: '每月12號出帳', deductionBank: '星展digbank', sortOrder: 4,
+    intlProjectName: '國外回饋', intlCashbackRate: 7.5, intlCashbackLimit: '12,000 TWD', intlCashbackExpiry: '2026-03-31', intlNotes: '加碼上限 600 點 + 任務上限 300 點。', intlDesc: '指定地區含日韓泰新美歐。', showIntl: false
+  },
+  { 
+    id: 'c4', bank: '玉山銀行', name: 'U Bear悠遊卡', expiry: '2028-12', spendingLimit: 10000, cashbackRate: 3, channels: '網購, 行動支付', cashbackExpiry: '2025-02-28', notes: '網購必備', billingDate: '每月20號', paymentMethod: '每月5號出帳', deductionBank: '台新Richart', sortOrder: 5,
+    intlProjectName: '國外回饋', intlCashbackRate: 3.0, intlCashbackLimit: '7,500 TWD', intlCashbackExpiry: '2026-08-31', intlNotes: '網購加碼 2% 每期上限 200 元。適合國外網購。', intlDesc: '基本 1% + 加碼 2%', showIntl: false
+  },
+  { 
+    id: 'c5', bank: '中國信託', name: 'LINE Pay信用卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 1, channels: '國內外一般消費', cashbackExpiry: '2024-12-31', notes: 'LINE POINTS回饋', billingDate: '每月1號', paymentMethod: '每月12號出帳', deductionBank: '中國信託', sortOrder: 6,
+    intlProjectName: '國外回饋', intlCashbackRate: 5.0, intlCashbackLimit: '20,454 TWD', intlCashbackExpiry: '2026-06-30', intlNotes: '加碼部分需每週二登錄，上限 450 LINE POINTS。', intlDesc: '限日韓泰美實體消費。', showIntl: false
+  },
+  { 
+    id: 'c6', bank: '中信', name: 'uniopen 卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 8, channels: 'Pi拍錢包, PChome', cashbackExpiry: '2024-12-31', notes: '原uniopen聯名卡概念', billingDate: '每月1號', paymentMethod: '每月12號出帳', deductionBank: '中國信託', sortOrder: 7,
+    intlProjectName: '國外回饋', intlCashbackRate: 11.0, intlCashbackLimit: '6,250 TWD', intlCashbackExpiry: '2026-06-30', intlNotes: '限國外實體商店面交易。免領券、免登錄。加碼 8% 上限 500 點。', intlDesc: '基本 3% + 加碼 8%', showIntl: true
+  },
+  { 
+    id: 'c7', bank: '永豐銀行', name: 'DAWAY卡', expiry: '2028-12', spendingLimit: 0, cashbackRate: 3, channels: 'LINE Pay, 國內外', cashbackExpiry: '2024-12-31', notes: '新戶LINE Pay 3%', billingDate: '每月9號', paymentMethod: '每月18號出帳', deductionBank: '大戶DAWHO', sortOrder: 8,
+    intlProjectName: '國外回饋', intlCashbackRate: 2.5, intlCashbackLimit: '無上限', intlCashbackExpiry: '2026-12-31', intlNotes: '回饋 LINE POINTS。適合大額無腦刷。', intlDesc: '適合大額無腦刷。', showIntl: false
+  },
+  { 
+    id: 'c8', bank: '永豐銀行', name: '幣倍卡', expiry: '2025-12', spendingLimit: 0, cashbackRate: 2, channels: '國外消費, 行動支付', cashbackExpiry: '2024-12-31', notes: '需有外幣帳戶', billingDate: '每月9號', paymentMethod: '每月18號出帳', deductionBank: '大戶DAWHO', sortOrder: 9,
+    intlProjectName: '國外回饋', intlCashbackRate: 6.0, intlCashbackLimit: '20,000 TWD', intlCashbackExpiry: '2026-06-30', intlNotes: '資產達 10 萬(超匯)上限 800 元，一般(懂匯)上限 300 元。', intlDesc: '需自動扣繳外幣帳戶。', showIntl: false
+  }
+];
+
+const initialBanks: BankAccount[] = [
+  { 
+    id: 'b8', bank: '第一銀行 iLEO', balance: 0, lastUpdated: '2026-03-13',
+    apy: 2.0, highInterestLimit: 120000, payoutDay: 31,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b3', bank: '台新 Richart', balance: 0, lastUpdated: '2026-03-13',
+    apy: 1.8, highInterestLimit: 300000, payoutDay: 31,
+    tasks: [
+      { id: 't1', description: '存滿 10 萬達 7 天', isCompleted: true },
+      { id: 't2', description: '外幣任務', isCompleted: false }
+    ],
+    pockets: []
+  },
+  { 
+    id: 'b5', bank: '永豐 大戶DAWHO', balance: 0, lastUpdated: '2026-03-13',
+    apy: 1.5, highInterestLimit: 300000, payoutDay: 21,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b6', bank: 'LINE Bank', balance: 0, lastUpdated: '2026-03-13',
+    apy: 1.5, highInterestLimit: 500000, payoutDay: 21,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b7', bank: '遠東 Bankee', balance: 0, lastUpdated: '2026-03-13',
+    apy: 1.44, highInterestLimit: 9999999, payoutDay: 21,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b1', bank: '兆豐銀行', balance: 0, lastUpdated: '2026-03-13', 
+    apy: 0.7, highInterestLimit: 9999999, payoutDay: 21,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b4', bank: '星展 digibank', balance: 0, lastUpdated: '2026-03-13',
+    apy: 0.71, highInterestLimit: 9999999, payoutDay: 21,
+    tasks: [], pockets: []
+  },
+  { 
+    id: 'b2', bank: '中國信託', balance: 0, lastUpdated: '2026-03-13',
+    apy: 0.75, highInterestLimit: 9999999, payoutDay: 21,
+    tasks: [], pockets: []
+  }
+];
+
+const initialMemos: Memo[] = [];
+
+const initialStocks: Stock[] = [];
+const initialStockOptions: StockOption[] = [
+  { id: 'opt-2', name: '富邦台50', code: '006208' },
+  { id: 'opt-3', name: '台積電', code: '2330' },
+  { id: 'opt-4', name: '鴻海', code: '2317' },
+  { id: 'opt-5', name: '聯發科', code: '2454' },
+  { id: 'opt-6', name: '長榮', code: '2603' }
+];
+
+function App() {
+  const [activeTab, setActiveTab] = useState('帳務');
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [activePieCategory, setActivePieCategory] = useState(null);
+  const [accountingProjectFilter, setAccountingProjectFilter] = useState(() => {
+    const saved = localStorage.getItem('projects');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const defaultProj = parsed.find((p: any) => p.id === 'default');
+        if (defaultProj) return defaultProj.name;
+      } catch (e) {
+        console.error('Failed to parse projects from localStorage', e);
+      }
+    }
+    return '日常支出';
+  });
+
+  // --- State ---
+  useEffect(() => {
+    const isCleared = localStorage.getItem('v1_cleared');
+    if (!isCleared) {
+      localStorage.clear();
+      localStorage.setItem('v1_cleared', 'true');
+    }
+  }, []);
+
+  const safeJSONParse = (key: string, fallback: any) => {
+    const saved = localStorage.getItem(key);
+    if (!saved) return fallback;
+    try {
+      return JSON.parse(saved);
+    } catch (e) {
+      console.error(`Failed to parse ${key} from localStorage`, e);
+      return fallback;
+    }
+  };
+
+  const [categories, setCategories] = useState(initialCategories);
+  const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
+  const [itemMap, setItemMap] = useState(() => safeJSONParse('itemMap', itemCategoryMap));
+  const currencies = ['TWD', 'JPY', 'KRW', 'THB', 'USD', 'EUR'];
+  const [projects, setProjects] = useState(() => {
+    const saved = localStorage.getItem('projects');
+    let loadedProjects: Project[] = [];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        loadedProjects = parsed.map((p: any) => ({
+          ...p,
+          location: p.location || (p.currency === 'TWD' ? '國內' : '國外')
+        }));
+      } catch (e) {
+        console.error('Failed to parse projects from localStorage', e);
+      }
+    }
+    
+    // Ensure default project exists
+    if (!loadedProjects.some(p => p.id === 'default')) {
+      loadedProjects.unshift({ id: 'default', name: '日常支出', status: 'Active', currency: 'TWD', location: '國內' });
+    }
+    
+    return loadedProjects;
+  });
+  const [transactions, setTransactions] = useState(() => safeJSONParse('transactions', initialTransactions));
+  const [cards, setCards] = useState(() => safeJSONParse('cards', initialCards));
+  const [banks, setBanks] = useState(() => safeJSONParse('banks', initialBanks));
+  const [memos, setMemos] = useState(() => safeJSONParse('memos', initialMemos));
+  const [stocks, setStocks] = useState(() => safeJSONParse('stocks', initialStocks));
+  const [stockOptions, setStockOptions] = useState(() => safeJSONParse('stockOptions', initialStockOptions));
+
+  useEffect(() => {
+    localStorage.setItem('transactions', JSON.stringify(transactions));
+    localStorage.setItem('cards', JSON.stringify(cards));
+    localStorage.setItem('banks', JSON.stringify(banks));
+    localStorage.setItem('memos', JSON.stringify(memos));
+    localStorage.setItem('stocks', JSON.stringify(stocks));
+    localStorage.setItem('stockOptions', JSON.stringify(stockOptions));
+    localStorage.setItem('itemMap', JSON.stringify(itemMap));
+    localStorage.setItem('projects', JSON.stringify(projects));
+  }, [transactions, cards, banks, memos, stocks, stockOptions, itemMap, projects]);
+
+  // --- Modals State ---
+  const [isTxModalOpen, setIsTxModalOpen] = useState(false);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isConfirmClearModalOpen, setIsConfirmClearModalOpen] = useState(false);
+  const [isConfirmClearAllModalOpen, setIsConfirmClearAllModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
+  const [geminiKey, setGeminiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+
+  const showAlert = (message: string) => {
+    setAlertMessage(message);
+    setIsAlertModalOpen(true);
+  };
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [isBankModalOpen, setIsBankModalOpen] = useState(false);
+  const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
+  const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
+  const [isStockModalOpen, setIsStockModalOpen] = useState(false);
+  const [isUpdatingStocks, setIsUpdatingStocks] = useState(false);
+  const [confirmingRecurring, setConfirmingRecurring] = useState(null);
+  const [actualRecDate, setActualRecDate] = useState('');
+  const [actualRecPrice, setActualRecPrice] = useState(0);
+  const [confirmBank, setConfirmBank] = useState('永豐 大戶DAWHO');
+
+  const [editingTx, setEditingTx] = useState(null);
+  const [editingCard, setEditingCard] = useState(null);
+  const [editingBank, setEditingBank] = useState(null);
+  const [editingMemo, setEditingMemo] = useState(null);
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editingStock, setEditingStock] = useState(null);
+  const [activeMemoId, setActiveMemoId] = useState(null);
+  const [cardSortBy, setCardSortBy] = useState('default');
+  const [billingCycleOffset, setBillingCycleOffset] = useState(0);
+  const [exportStartDate, setExportStartDate] = useState(format(subMonths(new Date(), 1), 'yyyy-MM-dd'));
+  const [exportEndDate, setExportEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  // --- Helpers ---
+  const generateId = () => Math.random().toString(36).substr(2, 9);
+
+  // --- Accounting Logic ---
+  const currentMonthTxs = useMemo(() => {
+    return transactions.filter(tx => {
+      if (!tx || !tx.date) return false;
+      const parsed = parseISO(tx.date);
+      return isValid(parsed) && isSameMonth(parsed, currentDate);
+    });
+  }, [transactions, currentDate]);
+
+  const defaultProjectName = useMemo(() => {
+    return projects.find(p => p.id === 'default')?.name || '日常支出';
+  }, [projects]);
+
+  const filteredAccountingTxs = useMemo(() => {
+    return currentMonthTxs.filter(tx => {
+      if (accountingProjectFilter === '合併總覽') {
+        const proj = projects.find(p => p.name === (tx.projectName || defaultProjectName));
+        return proj?.status === 'Active';
+      }
+      return (tx.projectName || defaultProjectName) === accountingProjectFilter;
+    });
+  }, [currentMonthTxs, accountingProjectFilter, projects, defaultProjectName]);
+
+  const { totalExpense, totalIncome } = useMemo(() => {
+    return filteredAccountingTxs.reduce(
+      (acc, tx) => {
+        const val = tx.convertedAmount || tx.amount;
+        if (tx.type === 'expense') acc.totalExpense += val;
+        else acc.totalIncome += val;
+        return acc;
+      },
+      { totalExpense: 0, totalIncome: 0 }
+    );
+  }, [filteredAccountingTxs]);
+
+  const pieData = [
+    { name: '支出', value: totalExpense, color: '#F28B82' },
+    { name: '收入', value: totalIncome, color: '#81C995' },
+  ].filter(d => d.value > 0);
+
+  const budget = 30000;
+  const remainingBudget = budget - totalExpense;
+
+  const expenseByCategory = useMemo(() => {
+    return filteredAccountingTxs.filter(tx => tx.type === 'expense').reduce((acc, tx) => {
+      acc[tx.category] = (acc[tx.category] || 0) + (tx.convertedAmount || tx.amount);
+      return acc;
+    }, {});
+  }, [filteredAccountingTxs]);
+
+  const innerPieData = useMemo(() => {
+    return Object.entries(expenseByCategory).map(([name, value], index) => {
+      const colors = ['#5C7FB0', '#81C995', '#F6C28B', '#AEC6CF', '#D4A5A5', '#B19CD9', '#FFB7B2', '#E2F0CB'];
+      return { name, value, color: colors[index % colors.length] };
+    });
+  }, [expenseByCategory]);
+
+  const outerPieData = useMemo(() => {
+    return filteredAccountingTxs
+      .filter(tx => tx.type === 'expense' && (!activePieCategory || tx.category === activePieCategory))
+      .reduce((acc, tx) => {
+        const val = tx.convertedAmount || tx.amount;
+        const existing = acc.find(item => item.name === tx.title);
+        if (existing) existing.value += val;
+        else acc.push({ name: tx.title, value: val, category: tx.category });
+        return acc;
+      }, [])
+      .map((item: any, index: number) => {
+        const colors = ['#5C7FB0', '#81C995', '#F6C28B', '#AEC6CF', '#D4A5A5', '#B19CD9', '#FFB7B2', '#E2F0CB'];
+        return { ...item, color: colors[(index + 2) % colors.length] };
+      });
+  }, [filteredAccountingTxs, activePieCategory]);
+
+  const paymentMethodData = useMemo(() => {
+    return filteredAccountingTxs.filter(tx => tx.type === 'expense').reduce((acc, tx) => {
+      const pm = tx.paymentMethod || '未分類';
+      const val = tx.convertedAmount || tx.amount;
+      const existing = acc.find(item => item.name === pm);
+      if (existing) existing.value += val;
+      else acc.push({ name: pm, value: val, color: '' });
+      return acc;
+    }, []).map((item: any, index: number) => {
+      const colors = ['#5C7FB0', '#81C995', '#F6C28B', '#AEC6CF', '#D4A5A5'];
+      return { ...item, color: colors[index % colors.length] };
+    });
+  }, [filteredAccountingTxs]);
+
+  const totalExpenseForPM = paymentMethodData.reduce((sum: number, item: any) => sum + item.value, 0);
+  const cashData = paymentMethodData.find((item: any) => item.name === '現金');
+  const cashRatio = cashData && totalExpenseForPM > 0 ? (cashData.value / totalExpenseForPM) * 100 : 0;
+
+  const lastMonth = subMonths(currentDate, 1);
+  const lastMonthTxs = useMemo(() => {
+    return transactions.filter(tx => {
+      if (!tx || !tx.date) return false;
+      const parsed = parseISO(tx.date);
+      return isValid(parsed) && isSameMonth(parsed, lastMonth) && tx.type === 'expense';
+    });
+  }, [transactions, lastMonth]);
+
+  const lastMonthByCategory = useMemo(() => {
+    return lastMonthTxs.reduce((acc, tx) => {
+      acc[tx.category] = (acc[tx.category] || 0) + (tx.convertedAmount || tx.amount);
+      return acc;
+    }, {});
+  }, [lastMonthTxs]);
+
+  const trendData = useMemo(() => {
+    return categories.map(cat => ({
+      name: cat,
+      '本月': expenseByCategory[cat] || 0,
+      '上月': lastMonthByCategory[cat] || 0,
+      isWarning: (expenseByCategory[cat] || 0) > (lastMonthByCategory[cat] || 0)
+    })).filter(item => item['本月'] > 0 || item['上月'] > 0);
+  }, [categories, expenseByCategory, lastMonthByCategory]);
+
+  const sortedCards = useMemo(() => {
+    let sorted = [...cards];
+    if (cardSortBy === 'bank') {
+      sorted.sort((a, b) => a.bank.localeCompare(b.bank));
+    } else if (cardSortBy === 'cashbackRate') {
+      sorted.sort((a, b) => b.cashbackRate - a.cashbackRate);
+    } else if (cardSortBy === 'billingDate') {
+      const getDay = (dateStr?: string) => {
+        if (!dateStr) return 99;
+        const match = dateStr.match(/\d+/);
+        return match ? parseInt(match[0], 10) : 99;
+      };
+      sorted.sort((a, b) => getDay(a.billingDate) - getDay(b.billingDate));
+    } else if (cardSortBy === 'sortOrder') {
+      sorted.sort((a, b) => (a.sortOrder || 999) - (b.sortOrder || 999));
+    }
+    return sorted;
+  }, [cards, cardSortBy]);
+
+  const manualPaymentCards = useMemo(() => {
+    const today = new Date().getDate();
+    if (today >= 17 && today <= 20) {
+      return cards.filter(c => c.paymentMethod?.includes('手動扣款'));
+    }
+    return [];
+  }, [cards]);
+
+  // Yearly/Quarterly Chart Data
+  const monthlyData = useMemo(() => {
+    const data = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(new Date(), i);
+      const monthTxs = transactions.filter(tx => {
+        if (!tx || !tx.date) return false;
+        const parsed = parseISO(tx.date);
+        return isValid(parsed) && isSameMonth(parsed, d);
+      });
+      const expense = monthTxs.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+      const income = monthTxs.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+      data.push({
+        name: format(d, 'MM月'),
+        支出: expense,
+        收入: income
+      });
+    }
+    return data;
+  }, [transactions]);
+
+  const pendingRecurring = useMemo(() => {
+    const pending: { stock: Stock; setting: RecurringSetting; date: string }[] = [];
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    stocks.forEach(stock => {
+      if (stock.recurringSettings && stock.recurringSettings.length > 0) {
+        stock.recurringSettings.forEach(setting => {
+          const start = parseISO(setting.startDate);
+          
+          // 計算首筆扣款日
+          let firstDeductionDate = new Date(start.getFullYear(), start.getMonth(), setting.day);
+          if (start.getDate() > setting.day) {
+            firstDeductionDate = addMonths(firstDeductionDate, 1);
+          }
+
+          // 如果現在時間還沒到首筆扣款日，就不顯示待確認
+          if (now < firstDeductionDate) {
+            return;
+          }
+
+          // 計算當月的扣款日
+          const currentDeductionDate = new Date(currentYear, currentMonth, setting.day);
+          
+          // 如果當月扣款日還沒到，或者當月扣款日早於首筆扣款日，則檢查上個月
+          let targetDate = currentDeductionDate;
+          if (now.getDate() < setting.day || currentDeductionDate < firstDeductionDate) {
+            targetDate = addMonths(currentDeductionDate, -1);
+          }
+
+          // 如果目標扣款日 >= 首筆扣款日，且 <= 現在時間
+          if (targetDate >= firstDeductionDate && targetDate <= now) {
+            const targetDateStr = format(targetDate, 'yyyy-MM-dd');
+            const exists = stock.transactions.some(tx => 
+              tx.type === 'recurring' && 
+              tx.date.startsWith(format(targetDate, 'yyyy-MM')) &&
+              tx.originalDay === setting.day
+            );
+            
+            if (!exists) {
+              pending.push({ stock, setting, date: targetDateStr });
+            }
+          }
+        });
+      }
+    });
+    return pending;
+  }, [stocks]);
+
+  // --- Stock Update Logic ---
+  const updateStockPrices = async () => {
+    if (stocks.length === 0) return;
+    setIsUpdatingStocks(true);
+    try {
+      const ai = new window.GoogleGenAI({ apiKey: geminiKey });
+      const stockList = stocks.map(s => `${s.name} (${s.code})`).join(', ');
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `請幫我查詢以下股票在台灣股市的最新收盤價（以 TWD 為單位）：${stockList}。
+        請以 JSON 格式回傳，格式如下：
+        [
+          {"code": "股票代碼", "price": 數字}
+        ]`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: window.Type.ARRAY,
+            items: {
+              type: window.Type.OBJECT,
+              properties: {
+                code: { type: window.Type.STRING },
+                price: { type: window.Type.NUMBER }
+              },
+              required: ["code", "price"]
+            }
+          }
+        }
+      });
+
+      const updatedData = JSON.parse(response.text);
+      
+      setStocks(prevStocks => prevStocks.map(stock => {
+        const update = updatedData.find((d: any) => d.code === stock.code);
+        if (update) {
+          const newPrice = update.price;
+          return {
+            ...stock,
+            latestPrice: newPrice,
+            lastUpdated: format(new Date(), 'yyyy-MM-dd')
+          };
+        }
+        return stock;
+      }));
+    } catch (error) {
+      console.error("Failed to update stock prices:", error);
+    } finally {
+      setIsUpdatingStocks(false);
+    }
+  };
+
+  const clearAllData = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  const exportAllDataJSON = () => {
+    const data = {
+      transactions: JSON.parse(localStorage.getItem('transactions') || '[]'),
+      cards: JSON.parse(localStorage.getItem('cards') || '[]'),
+      banks: JSON.parse(localStorage.getItem('banks') || '[]'),
+      memos: JSON.parse(localStorage.getItem('memos') || '[]'),
+      stocks: JSON.parse(localStorage.getItem('stocks') || '[]'),
+      projects: JSON.parse(localStorage.getItem('projects') || '[]')
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_${format(new Date(), 'yyyyMMdd')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportTransactionsXLSX = () => {
+    const txs = JSON.parse(localStorage.getItem('transactions') || '[]');
+    const exportData = txs.map((tx: any) => ({
+      '日期': tx.date,
+      '類型': tx.type === 'expense' ? '支出' : '收入',
+      '標題': tx.title,
+      '金額': tx.amount,
+      '類別': tx.category,
+      '支付方式': tx.paymentMethod,
+      '專案': tx.projectName || '',
+      '備註': tx.notes || ''
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "收支紀錄");
+    XLSX.writeFile(workbook, `收支紀錄_${format(new Date(), 'yyyyMMdd')}.xlsx`);
+  };
+
+  const clearAllTransactions = () => {
+    setTransactions([]);
+    setIsConfirmClearModalOpen(false);
+  };
+
+
+  // --- Render Functions ---
+  const renderAccounting = () => (
+    <div className="flex-1 overflow-y-auto no-scrollbar pb-32">
+      {/* Header & Date Selector */}
+      <div className="px-6 pt-10 pb-6 bg-[#5C7FB0] text-white rounded-b-[2.5rem] shadow-md z-10">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-1 -ml-2">
+            <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <ChevronLeft size={24} />
+            </button>
+            
+            <button 
+              onClick={() => {
+                setPickerYear(currentDate.getFullYear());
+                setIsMonthPickerOpen(true);
+              }}
+              className="relative flex items-center justify-center cursor-pointer group px-4 py-1.5 bg-[#4A6B9C] hover:bg-[#3A5B8C] rounded-full shadow-sm transition-colors active:scale-95"
+            >
+              <h1 className="text-xl font-black tracking-wider text-white flex items-center gap-2" style={{ fontFamily: '"Zen Maru Gothic", sans-serif' }}>
+                {format(currentDate, 'yyyy年 MM月')}
+                <Calendar size={18} className="text-white/80" />
+              </h1>
+            </button>
+
+            <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <ChevronRight size={24} />
+            </button>
+          </div>
+          <button onClick={() => setIsSettingsModalOpen(true)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><Settings size={24} /></button>
+        </div>
+
+        <div className="flex gap-3 mb-6">
+          <button 
+            onClick={() => { setEditingTx(null); setIsTxModalOpen(true); }}
+            className="flex-1 bg-white text-[#5C7FB0] py-3 rounded-2xl font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-white/90 transition-colors active:scale-95"
+          >
+            <Plus size={20} /> 新增支出 / 收入
+          </button>
+          <button 
+            onClick={() => setIsProjectModalOpen(true)}
+            className="px-4 bg-white/20 text-white py-3 rounded-2xl font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-white/30 transition-colors active:scale-95 border border-white/30"
+            title="專案管理"
+          >
+            <Globe size={20} />
+          </button>
+          <button 
+            onClick={() => setIsConfirmClearModalOpen(true)}
+            className="px-4 bg-white/20 text-white py-3 rounded-2xl font-bold shadow-sm flex items-center justify-center gap-2 hover:bg-white/30 transition-colors active:scale-95 border border-white/30"
+            title="清除所有紀錄"
+          >
+            <Trash2 size={20} />
+          </button>
+        </div>
+        
+        <div className="mb-4">
+          <select
+            value={accountingProjectFilter}
+            onChange={(e) => setAccountingProjectFilter(e.target.value)}
+            className="w-full bg-white/20 text-white border border-white/30 rounded-2xl px-4 py-2 outline-none focus:ring-2 focus:ring-white/50 appearance-none"
+          >
+            <option value={defaultProjectName} className="text-gray-800">{defaultProjectName}</option>
+            {projects.filter(p => p.status === 'Active' && p.name !== defaultProjectName).map(p => (
+              <option key={p.id} value={p.name} className="text-gray-800">{p.name}</option>
+            ))}
+            <option value="合併總覽" className="text-gray-800">合併總覽</option>
+          </select>
+        </div>
+
+        <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-inner">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <p className="text-white/80 text-sm font-medium mb-1">本月結餘</p>
+              <div className="text-3xl font-bold tracking-tight">$ {(totalIncome - totalExpense).toLocaleString()}</div>
+            </div>
+          </div>
+          
+          <div className="h-56 w-full mb-4 relative">
+            {innerPieData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie 
+                      data={innerPieData} 
+                      innerRadius={45} 
+                      outerRadius={65} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                      onClick={(data) => setActivePieCategory(activePieCategory === data.name ? null : data.name)}
+                      style={{ cursor: 'pointer', filter: 'drop-shadow(0px 4px 6px rgba(0, 0, 0, 0.1))' }}
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, value, name, percent }) => {
+                        const RADIAN = Math.PI / 180;
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        return (
+                          <text 
+                            x={x} 
+                            y={y} 
+                            fill="white" 
+                            textAnchor="middle" 
+                            dominantBaseline="central" 
+                            className="text-[10px] font-bold"
+                            style={{ pointerEvents: 'none', textShadow: '0px 1px 2px rgba(0,0,0,0.3)' }}
+                          >
+                            {`${name} ${(percent * 100).toFixed(0)}%`}
+                          </text>
+                        );
+                      }}
+                      labelLine={false}
+                    >
+                      {innerPieData.map((entry, index) => (
+                        <Cell key={`inner-${index}`} fill={entry.color} opacity={activePieCategory && activePieCategory !== entry.name ? 0.3 : 1} />
+                      ))}
+                    </Pie>
+                    <Pie 
+                      data={outerPieData} 
+                      innerRadius={75} 
+                      outerRadius={90} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                      style={{ filter: 'drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.05))' }}
+                    >
+                      {outerPieData.map((entry, index) => (
+                        <Cell key={`outer-${index}`} fill={entry.color} opacity={0.8} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(value: number) => `$ ${value.toLocaleString()}`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-white/70 text-[10px] mb-0.5">剩餘預算</span>
+                  <span className="text-white font-bold text-sm">$ {remainingBudget.toLocaleString()}</span>
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-white/50 text-sm">尚無支出資料</div>
+            )}
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div>
+              <p className="text-white/70 text-xs mb-1">總支出</p>
+              <p className="text-lg font-semibold text-[#F28B82]">$ {totalExpense.toLocaleString()}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-white/70 text-xs mb-1">總收入</p>
+              <p className="text-lg font-semibold text-[#81C995]">$ {totalIncome.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-6 pt-6 space-y-6">
+        {/* Payment Method Analysis */}
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">支付方式分析</h2>
+          <div className="h-40 w-full mb-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={paymentMethodData} innerRadius={40} outerRadius={60} paddingAngle={2} dataKey="value">
+                  {paymentMethodData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value: number) => `$ ${value.toLocaleString()}`} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {cashRatio > 30 && (
+            <div className="p-3 bg-blue-50 rounded-2xl flex items-start gap-2 text-blue-700 text-xs shadow-sm">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <p>本月現金支出佔 {cashRatio.toFixed(1)}%，建議多使用信用卡以賺取更多回饋。</p>
+            </div>
+          )}
+        </div>
+
+        {/* Trend Comparison */}
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">趨勢對比 (本月 vs 上月)</h2>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={trendData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f0f0f0" />
+                <XAxis type="number" hide />
+                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#6b7280' }} width={40} />
+                <RechartsTooltip 
+                  cursor={{ fill: '#f3f4f6' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                <Bar dataKey="本月" fill="#5C7FB0" radius={[0, 4, 4, 0]} barSize={12} />
+                <Bar dataKey="上月" fill="#AEC6CF" radius={[0, 4, 4, 0]} barSize={12} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          {trendData.some(d => d.isWarning) && (
+            <div className="mt-4 p-3 bg-red-50 rounded-2xl flex items-start gap-2 text-red-600 text-xs shadow-sm">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <p>注意：{trendData.filter(d => d.isWarning).map(d => d.name).join('、')} 支出已超過上月總和！</p>
+            </div>
+          )}
+        </div>
+
+        {/* Transaction List */}
+        <div>
+          <h2 className="text-lg font-bold text-gray-800 mb-4">紀錄清單</h2>
+          <div className="space-y-4">
+            {filteredAccountingTxs.length === 0 && <p className="text-center text-gray-400 py-8">本月尚無紀錄</p>}
+            {filteredAccountingTxs.map((tx) => (
+              <div key={tx.id} onClick={() => { setEditingTx(tx); setIsTxModalOpen(true); }} className="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between cursor-pointer hover:shadow-md transition-all active:scale-95">
+                <div className="flex items-center gap-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${getCategoryColor(tx.category, tx.type)}`}>
+                    <span className="text-xs font-bold">{tx.category}</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-gray-800 text-base">{tx.title}</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">{tx.date} · {tx.paymentMethod}{tx.bank ? ` (${tx.bank})` : ''}</p>
+                  </div>
+                </div>
+                <div className={`font-bold text-lg ${tx.type === 'expense' ? 'text-gray-800' : 'text-green-600'}`}>
+                  {tx.type === 'expense' ? '-' : '+'}{tx.amount.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderCreditCards = () => {
+    const parseLimit = (limitStr: string | undefined) => {
+      if (!limitStr) return 0;
+      const match = limitStr.match(/[\d,]+/);
+      if (!match) return 0;
+      return parseInt(match[0].replace(/,/g, ''), 10);
+    };
+
+    const calculateBillingCycle = (billingDayStr: string | undefined, offsetMonths: number) => {
+      const today = new Date();
+      if (!billingDayStr) {
+        const targetDate = addMonths(today, offsetMonths);
+        return { start: startOfMonth(targetDate), end: endOfMonth(targetDate) };
+      }
+      const match = billingDayStr.match(/\d+/);
+      if (!match) {
+        const targetDate = addMonths(today, offsetMonths);
+        return { start: startOfMonth(targetDate), end: endOfMonth(targetDate) };
+      }
+      
+      const billingDay = parseInt(match[0], 10);
+      const currentYear = today.getFullYear();
+      let currentMonth = today.getMonth(); // 0-11
+      const currentDay = today.getDate();
+
+      let startMonth = currentMonth;
+      let startYear = currentYear;
+      let endMonth = currentMonth;
+      let endYear = currentYear;
+
+      if (currentDay <= billingDay) {
+        startMonth = currentMonth - 1;
+      } else {
+        endMonth = currentMonth + 1;
+      }
+
+      // Apply offset
+      startMonth += offsetMonths;
+      endMonth += offsetMonths;
+
+      // Normalize months
+      while (startMonth < 0) { startMonth += 12; startYear--; }
+      while (startMonth > 11) { startMonth -= 12; startYear++; }
+      while (endMonth < 0) { endMonth += 12; endYear--; }
+      while (endMonth > 11) { endMonth -= 12; endYear++; }
+
+      const getValidDate = (year: number, month: number, day: number) => {
+        const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+        return new Date(year, month, Math.min(day, lastDayOfMonth));
+      };
+
+      const start = getValidDate(startYear, startMonth, billingDay);
+      start.setDate(start.getDate() + 1); // billingDay + 1
+      start.setHours(0, 0, 0, 0);
+
+      const end = getValidDate(endYear, endMonth, billingDay);
+      end.setHours(23, 59, 59, 999);
+
+      return { start, end };
+    };
+
+    return (
+      <div className="flex-1 px-6 pt-10 pb-32 overflow-y-auto no-scrollbar">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setBillingCycleOffset(prev => prev - 1)} className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-600">
+              <ChevronLeft size={20} />
+            </button>
+            <h1 className="text-xl font-bold text-gray-800">{billingCycleOffset === 0 ? '本期帳單' : billingCycleOffset === -1 ? '上一期帳單' : `${Math.abs(billingCycleOffset)} 期前帳單`}</h1>
+            <button onClick={() => setBillingCycleOffset(prev => prev + 1)} disabled={billingCycleOffset >= 0} className={`p-1 rounded-full transition-colors ${billingCycleOffset >= 0 ? 'text-gray-300' : 'hover:bg-gray-100 text-gray-600'}`}>
+              <ChevronRight size={20} />
+            </button>
+          </div>
+          <select 
+            value={cardSortBy} 
+            onChange={(e) => setCardSortBy(e.target.value)}
+            className="bg-white border border-gray-200 text-gray-700 text-sm font-bold rounded-2xl px-3 py-1.5 outline-none focus:ring-2 focus:ring-[#5C7FB0] shadow-sm"
+          >
+            <option value="default">預設排序</option>
+            <option value="sortOrder">自訂排序</option>
+            <option value="billingDate">依繳款日</option>
+            <option value="bank">依銀行</option>
+            <option value="cashbackRate">依回饋比例</option>
+          </select>
+        </div>
+
+        {manualPaymentCards.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-start gap-3 shadow-sm">
+            <AlertCircle className="text-red-500 shrink-0 mt-0.5" size={20} />
+            <div>
+              <h3 className="text-red-800 font-bold text-sm">手動繳款提醒</h3>
+              <p className="text-red-600 text-xs mt-1 leading-relaxed">
+                您有 {manualPaymentCards.length} 張信用卡需要手動繳款 ({manualPaymentCards.map(c => c.name).join('、')})，請留意繳款期限以免產生違約金。
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {sortedCards.length === 0 && <p className="text-center text-gray-400 py-8">尚未新增信用卡</p>}
+          {sortedCards.map(card => {
+            const { start, end } = calculateBillingCycle(card.paymentMethod, billingCycleOffset);
+            
+            const cardTxs = transactions.filter(tx => {
+              if (tx.type !== 'expense' || tx.bank !== card.name) return false;
+              
+              const txProject = projects.find(p => p.name === (tx.projectName || defaultProjectName));
+              const isForeignProject = txProject?.location === '國外';
+              const effectiveLocation = isForeignProject ? '國外' : tx.location;
+
+              // 專案優先 (Override)
+              if (card.showIntl && effectiveLocation === '國外') {
+                return true; // 不論日期都必須列入該卡的已刷金額統計
+              }
+
+              const txDate = new Date(tx.date);
+              return txDate >= start && txDate <= end;
+            });
+
+            const currentMonthSpending = cardTxs.reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+            
+            const currentMonthIntlSpending = cardTxs
+              .filter(tx => {
+                const txProject = projects.find(p => p.name === (tx.projectName || defaultProjectName));
+                const isForeignProject = txProject?.location === '國外';
+                return isForeignProject ? true : tx.location === '國外';
+              })
+              .reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+
+            const currentMonthDomesticSpending = card.showIntl ? currentMonthSpending - currentMonthIntlSpending : currentMonthSpending;
+
+            const progress = card.spendingLimit > 0 ? Math.min((currentMonthSpending / card.spendingLimit) * 100, 100) : 0;
+            const estimatedCashback = Math.floor(currentMonthDomesticSpending * (card.cashbackRate / 100));
+            
+            const intlLimit = parseLimit(card.intlCashbackLimit);
+            const intlProgress = intlLimit > 0 ? Math.min((currentMonthIntlSpending / intlLimit) * 100, 100) : 0;
+            const estimatedIntlCashback = Math.floor(currentMonthIntlSpending * ((card.intlCashbackRate || 0) / 100));
+
+            const isManual = card.paymentMethod?.includes('手動扣款');
+
+            return (
+              <div key={card.id} onClick={() => { setEditingCard(card); setIsCardModalOpen(true); }} className="bg-gradient-to-br from-gray-800 to-gray-900 p-5 rounded-3xl shadow-lg text-white relative overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform">
+                <div className="text-gray-400 text-sm font-medium mb-1">{card.bank}</div>
+                <div className="text-xl font-bold mb-4">{card.name}</div>
+                
+                {/* Billing Info */}
+                <div className="bg-gray-800/50 rounded-2xl p-3 mb-4 text-xs space-y-1 border border-gray-700">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">繳款日</span>
+                    <span className="text-gray-200">{card.billingDate || '未設定'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">帳單結帳日</span>
+                    <span className={`text-right max-w-[70%] font-bold ${isManual ? 'text-red-400 flex items-center gap-1 justify-end' : 'text-gray-200'}`}>
+                      {isManual && <AlertCircle size={14} />}
+                      {card.paymentMethod || '未設定'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Domestic Progress Bar */}
+                <div className="bg-gray-700/50 rounded-2xl p-3 mb-4">
+                  <div className="flex justify-between text-xs mb-2">
+                    <span className="text-gray-300">本期已刷 / 上限</span>
+                    <span className="font-bold">$ {currentMonthSpending.toLocaleString()} / {card.spendingLimit.toLocaleString()}</span>
+                  </div>
+                  <div className="w-full bg-gray-600 rounded-full h-2 mb-2 overflow-hidden">
+                    <div className={`h-2 rounded-full ${progress >= 100 ? 'bg-red-500' : progress >= 80 ? 'bg-orange-400' : 'bg-[#81C995]'}`} style={{ width: `${progress}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-400">回饋 {card.cashbackRate}%</span>
+                    <span className="text-[#81C995] font-bold">預估回饋: $ {estimatedCashback.toLocaleString()}</span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-2 text-center border-t border-gray-700 pt-2">
+                    週期：{format(start, 'MM/dd')} ~ {format(end, 'MM/dd')}
+                  </div>
+                </div>
+
+                {/* Overseas Project Progress Bar */}
+                {card.showIntl && (
+                  <div className="bg-sky-900/40 rounded-2xl p-3 border border-sky-800/50 mt-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Globe size={14} className="text-sky-400" />
+                      <span className="text-xs font-bold text-sky-200">{card.intlProjectName || '國外專案'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs mb-2">
+                      <span className="text-sky-300">國外已刷 / 上限</span>
+                      <span className="font-bold">$ {currentMonthIntlSpending.toLocaleString()} / {intlLimit.toLocaleString()}</span>
+                    </div>
+                    <div className="w-full bg-sky-900/60 rounded-full h-2 mb-2 overflow-hidden">
+                      <div className={`h-2 rounded-full ${intlProgress >= 100 ? 'bg-red-500' : intlProgress >= 80 ? 'bg-orange-400' : 'bg-sky-400'}`} style={{ width: `${intlProgress}%` }}></div>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-sky-400">回饋 {card.intlCashbackRate}%</span>
+                      <span className="text-sky-300 font-bold">預估回饋: $ {estimatedIntlCashback.toLocaleString()}</span>
+                    </div>
+                    {card.intlNotes && <p className="text-[10px] text-sky-400/70 mt-2 leading-tight">{card.intlNotes}</p>}
+                  </div>
+                )}
+              </div>
+            );
+        })}
+      </div>
+    </div>
+  );
+};
+
+  const renderBanking = () => (
+    <div className="flex-1 px-6 pt-10 pb-32 overflow-y-auto no-scrollbar">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">數位銀行</h1>
+        <button 
+          onClick={() => { setEditingBank(null); setIsBankModalOpen(true); }}
+          className="bg-[#5C7FB0] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm active:scale-95 transition-transform"
+        >
+          + 新增帳戶
+        </button>
+      </div>
+      <div className="space-y-6">
+        {banks.length === 0 && <p className="text-center text-gray-400 py-8">尚未新增網銀帳戶</p>}
+        {banks.map(bank => {
+          const pocketTotal = bank.pockets ? bank.pockets.reduce((sum, p) => sum + p.balance, 0) : 0;
+          const totalBalance = bank.balance + pocketTotal;
+          const pocketInterest = bank.pockets ? bank.pockets.reduce((sum, p) => sum + (p.balance * (p.apy / 100)) / 12, 0) : 0;
+          const monthlyInterest = ((bank.balance * (bank.apy / 100)) / 12) + pocketInterest;
+          const progress = bank.highInterestLimit > 0 ? (totalBalance / bank.highInterestLimit) * 100 : 0;
+          const isOverLimit = totalBalance > bank.highInterestLimit;
+          const today = new Date().getDate();
+          const isPayoutSoon = bank.payoutDay - today === 1;
+
+          return (
+            <div key={bank.id} onClick={() => { setEditingBank(bank); setIsBankModalOpen(true); }} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#5C7FB0]/10 text-[#5C7FB0] rounded-full flex items-center justify-center">
+                    <Landmark size={20} />
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-800 text-lg">{bank.bank}</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">APY {bank.apy}%</span>
+                      <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">發息日: {bank.payoutDay}號</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-gray-400">預估月利息</div>
+                  <div className="text-sm font-bold text-emerald-600">+$ {Math.floor(monthlyInterest).toLocaleString()}</div>
+                </div>
+              </div>
+
+              {isPayoutSoon && (
+                <div className="mb-4 p-2 bg-amber-50 rounded-2xl flex items-center gap-2 text-amber-700 text-[10px] font-bold border border-amber-100">
+                  <AlertCircle size={14} />
+                  明天預計入帳 $ {Math.floor(monthlyInterest).toLocaleString()} 利息！
+                </div>
+              )}
+
+              <div className="bg-gray-50 p-4 rounded-2xl mb-4">
+                <div className="flex justify-between items-end mb-2">
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">儲存額度 (含子帳戶)</div>
+                    <div className="text-2xl font-bold text-gray-800">$ {totalBalance.toLocaleString()}</div>
+                  </div>
+                  <div className="text-right text-[10px] text-gray-400">
+                    高利上限: $ {bank.highInterestLimit.toLocaleString()}
+                  </div>
+                </div>
+                
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(progress, 100)}%` }}
+                    className={`h-full rounded-full ${isOverLimit ? 'bg-orange-400' : 'bg-blue-400'}`}
+                  />
+                </div>
+                {isOverLimit && (
+                  <div className="text-[10px] text-orange-500 font-bold mt-1 text-right">
+                    已超過高利額度 $ {(totalBalance - bank.highInterestLimit).toLocaleString()}
+                  </div>
+                )}
+              </div>
+
+              {/* Tasks */}
+              {bank.tasks.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">任務達成狀態</div>
+                  <div className="flex flex-wrap gap-2">
+                    {bank.tasks.map(task => (
+                      <div 
+                        key={task.id} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newBanks = banks.map(b => {
+                            if (b.id === bank.id) {
+                              return {
+                                ...b,
+                                tasks: b.tasks.map(t => t.id === task.id ? { ...t, isCompleted: !t.isCompleted } : t)
+                              };
+                            }
+                            return b;
+                          });
+                          setBanks(newBanks);
+                        }}
+                        className={`px-3 py-1.5 rounded-2xl text-[10px] font-bold flex items-center gap-1.5 transition-colors ${task.isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        {task.isCompleted ? <CheckCircle2 size={12} /> : <Circle size={12} />}
+                        {task.description}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pockets */}
+              {bank.pockets.length > 0 && (
+                <div className="pt-4 border-t border-gray-100">
+                  <div className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">口袋帳戶 / 儲值專案</div>
+                  <div className="space-y-2">
+                    {bank.pockets.map(pocket => (
+                      <div key={pocket.id} className="bg-blue-50/50 p-3 rounded-2xl flex justify-between items-center border border-blue-100/50">
+                        <div>
+                          <div className="text-xs font-bold text-gray-800">{pocket.name}</div>
+                          <div className="text-[10px] text-gray-500">{pocket.duration} · 到期日: {pocket.endDate}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-blue-600">$ {pocket.balance.toLocaleString()}</div>
+                          <div className="text-[10px] font-bold text-blue-400">{pocket.apy}% APY</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const renderMemos = () => {
+    const months = Array.from({ length: 12 }, (_, i) => i + 1);
+
+    const togglePayment = (memoId: string, month: number) => {
+      setMemos(memos.map(m => {
+        if (m.id === memoId) {
+          const newPayments = { ...m.payments };
+          newPayments[month] = !newPayments[month];
+          return { ...m, payments: newPayments };
+        }
+        return m;
+      }));
+    };
+
+    return (
+      <div className="flex-1 px-6 pt-10 pb-32 overflow-y-auto no-scrollbar">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">備忘錄</h1>
+          <button 
+            onClick={() => { setEditingMemo(null); setIsMemoModalOpen(true); }}
+            className="bg-[#5C7FB0] text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm active:scale-95 transition-transform"
+          >
+            + 新增款項
+          </button>
+        </div>
+        <div className="space-y-6">
+          {memos.length === 0 && <p className="text-center text-gray-400 py-8">尚無備忘紀錄</p>}
+          {memos.map(memo => {
+            return (
+              <div key={memo.id} className="bg-white p-5 rounded-3xl shadow-sm border border-orange-100">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="font-bold text-lg text-gray-800">{memo.title}</h3>
+                    <p className="text-sm text-gray-500 mt-1">對象：<span className="font-semibold text-gray-700">{memo.person}</span></p>
+                    <p className="text-xs text-gray-400 mt-1">{memo.type === 'single' ? '日期：' : '起始：'}{memo.startDate}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="font-bold text-xl text-orange-500">$ {memo.amount.toLocaleString()}{memo.type !== 'single' ? ' / 月' : ''}</span>
+                    <button 
+                      onClick={() => { setEditingMemo(memo); setIsMemoModalOpen(true); }}
+                      className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                      <Edit2 size={18} />
+                    </button>
+                  </div>
+                </div>
+                
+                {memo.type !== 'single' ? (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <h4 className="text-sm font-bold text-gray-700 mb-3">收款進度 (1~12月)</h4>
+                    <div className="grid grid-cols-4 gap-2">
+                      {months.map(month => {
+                        const isPaid = memo.payments[month];
+                        const isTargetMonth = memo.type === 'monthly' || (memo.customMonths && memo.customMonths.includes(month));
+                        
+                        if (!isTargetMonth) return null;
+
+                        return (
+                          <button
+                            key={month}
+                            onClick={() => togglePayment(memo.id, month)}
+                            className={`flex flex-col items-center justify-center py-2 rounded-2xl border transition-colors ${isPaid ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 hover:bg-gray-100'}`}
+                          >
+                            <span className={`text-xs mb-1 ${isPaid ? 'text-green-700 font-bold' : 'text-gray-500'}`}>{month}月</span>
+                            {isPaid ? <CheckCircle2 size={16} className="text-green-500" /> : <Circle size={16} className="text-gray-300" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
+                    <h4 className="text-sm font-bold text-gray-700">收款狀態</h4>
+                    <button 
+                      onClick={() => setMemos(memos.map(m => m.id === memo.id ? { ...m, isSettled: !m.isSettled } : m))}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-bold text-sm transition-colors ${memo.isSettled ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}
+                    >
+                      {memo.isSettled ? <><CheckCircle2 size={18} /> 已結清</> : <><Circle size={18} /> 未結清</>}
+                    </button>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-sm font-bold text-gray-700">收款紀錄</h4>
+                    <button onClick={() => { setActiveMemoId(memo.id); setEditingRecord(null); setIsRecordModalOpen(true); }} className="text-xs text-[#5C7FB0] font-bold bg-[#5C7FB0]/10 px-3 py-1.5 rounded-lg active:scale-95 transition-transform">+ 新增紀錄</button>
+                  </div>
+                  <div className="space-y-2">
+                    {memo.records?.map(record => (
+                      <div key={record.id} onClick={() => { setActiveMemoId(memo.id); setEditingRecord(record); setIsRecordModalOpen(true); }} className="bg-gray-50 p-3 rounded-2xl border border-gray-100 cursor-pointer hover:bg-gray-100 transition-colors">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="font-bold text-sm text-gray-800">{record.title}</span>
+                          <span className="font-bold text-sm text-[#81C995]">$ {record.amount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-gray-500">
+                          <span>{record.date}</span>
+                          <span className="truncate ml-2">{record.notes}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!memo.records || memo.records.length === 0) && <p className="text-xs text-gray-400 text-center py-2">尚無收款紀錄</p>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderStocks = () => {
+    const totalValue = Math.floor(stocks.reduce((sum, s) => {
+      const price = s.latestPrice || 0;
+      return sum + (s.shares * price);
+    }, 0));
+    const totalPrincipal = stocks.reduce((sum, s) => sum + s.historicalCost, 0);
+    const totalProfit = totalValue - totalPrincipal;
+    const profitRate = totalPrincipal > 0 ? (totalProfit / totalPrincipal) * 100 : 0;
+
+    const handleExportStocks = () => {
+      const start = parseISO(exportStartDate);
+      const end = parseISO(exportEndDate);
+      
+      const exportData: any[] = [];
+
+      stocks.forEach(stock => {
+        stock.transactions.forEach(tx => {
+          const txDate = parseISO(tx.date);
+          if (txDate >= start && txDate <= end) {
+            exportData.push({
+              '日期': tx.date,
+              '股票名稱': stock.name,
+              '代碼': stock.code,
+              '類型': tx.type === 'single' ? '單筆買入' : '定期定額',
+              '金額': tx.amount,
+              '股數': tx.shares,
+              '成交價': tx.price || (tx.amount / tx.shares).toFixed(2),
+              '備註': tx.type === 'recurring' ? `定期定額扣款 (原定 ${tx.originalDay} 號)` : ''
+            });
+          }
+        });
+      });
+
+      if (exportData.length === 0) {
+        showAlert("所選區間內無交易紀錄");
+        return;
+      }
+
+      exportData.sort((a, b) => a['日期'].localeCompare(b['日期']));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "股票交易紀錄");
+      XLSX.writeFile(workbook, `股票交易紀錄_${exportStartDate}_${exportEndDate}.xlsx`);
+    };
+
+    return (
+      <div className="flex-1 px-6 pt-10 pb-32 overflow-y-auto no-scrollbar">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">股票投資</h1>
+          <button 
+            onClick={updateStockPrices}
+            disabled={isUpdatingStocks}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-bold transition-all ${isUpdatingStocks ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-[#5C7FB0] text-white hover:bg-[#4A6B9C] active:scale-95'}`}
+          >
+            <RefreshCw size={16} className={isUpdatingStocks ? 'animate-spin' : ''} />
+            {isUpdatingStocks ? '更新中...' : '更新現值'}
+          </button>
+        </div>
+
+        {/* 資產概況卡片 */}
+        <div className="bg-gradient-to-br from-[#6B8EAD] to-[#5C7FB0] p-6 rounded-[2rem] shadow-lg text-white mb-8 relative overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl" />
+          <div className="relative z-10">
+            <p className="text-white/80 text-xs font-medium mb-1 uppercase tracking-wider">資產概況概覽</p>
+            <div className="text-3xl font-bold mb-4 tracking-tight">$ {totalValue.toLocaleString()}</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10">
+                <p className="text-white/70 text-[10px] mb-1">預估獲利</p>
+                <p className={`text-base font-bold ${totalProfit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {totalProfit >= 0 ? '+' : ''}{Math.floor(totalProfit).toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10">
+                <p className="text-white/70 text-[10px] mb-1">總報酬率</p>
+                <p className={`text-base font-bold ${profitRate >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>
+                  {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 定期定額待確認區 */}
+        {pendingRecurring.length > 0 && (
+          <div className="mb-8 space-y-4">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <RefreshCw size={16} className="text-orange-500" /> 定期定額待確認
+            </h2>
+            <div className="space-y-3">
+              {pendingRecurring.map((item, idx) => (
+                <div 
+                  key={`${item.stock.id}-${item.setting.id}-${item.date}`}
+                  onClick={() => {
+                    setConfirmingRecurring(item);
+                    setActualRecDate(item.date);
+                    setActualRecPrice(0);
+                  }}
+                  className="bg-white p-4 rounded-2xl shadow-sm border-l-4 border-orange-400 flex justify-between items-center cursor-pointer hover:shadow-md transition-all active:scale-95"
+                >
+                  <div>
+                    <div className="text-sm font-bold text-gray-800">{item.stock.name} ({item.stock.code})</div>
+                    <div className="text-xs text-gray-500 mt-1">預計扣款日: {item.date.replace(/-/g, '/')}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-bold text-orange-600">${item.setting.amount.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400 mt-1">點擊確認</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4 mb-8">
+          {stocks.length === 0 && <p className="text-center text-gray-400 py-8">尚未新增投資紀錄</p>}
+          {stocks.map(stock => {
+            const latestPrice = stock.latestPrice || 0;
+            const currentValue = stock.shares * latestPrice;
+            const principal = stock.historicalCost;
+            const profit = currentValue - principal;
+            const profitRate = principal > 0 ? (profit / principal) * 100 : 0;
+
+            return (
+              <div key={stock.id} onClick={() => { setEditingStock(stock); setIsStockModalOpen(true); }} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-all active:scale-[0.98]">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center bg-blue-50 text-blue-500">
+                      <TrendingUp size={20} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-800">{stock.name}</h3>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] font-bold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{stock.code}</span>
+                        {stock.recurringSettings && stock.recurringSettings.length > 0 && (
+                          <span className="text-[10px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">
+                            定期: {stock.recurringSettings.map(s => s.day).join(', ')}號
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-gray-400">現值</div>
+                    <div className="text-lg font-bold text-gray-800">$ {Math.floor(currentValue).toLocaleString()}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-gray-50 p-3 rounded-2xl">
+                    <p className="text-gray-400 mb-1">投入總本金</p>
+                    <p className="font-bold text-gray-700">$ {principal.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-2xl">
+                    <p className="text-gray-400 mb-1">持有總股數</p>
+                    <p className="font-bold text-gray-700">{stock.shares.toLocaleString()} 股</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex justify-between items-center px-1">
+                  <div className="text-[10px] text-gray-400">獲利: <span className={profit >= 0 ? 'text-emerald-500 font-bold' : 'text-red-500 font-bold'}>{profit >= 0 ? '+' : ''}{Math.floor(profit).toLocaleString()}</span></div>
+                  <div className={`text-[10px] font-bold ${profitRate >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {profitRate >= 0 ? '+' : ''}{profitRate.toFixed(2)}%
+                  </div>
+                </div>
+                
+                <div className="mt-2 pt-2 border-t border-gray-50 flex justify-end">
+                  <span className="text-[9px] text-gray-300">最後更新日期: {stock.lastUpdated.replace(/-/g, '/')}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 股票匯出功能 */}
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">匯出股票交易報表</h2>
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">開始日期</label>
+                <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">結束日期</label>
+                <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+            </div>
+            <button 
+              onClick={handleExportStocks}
+              className="w-full py-3.5 bg-[#6B8EAD] text-white rounded-2xl font-bold text-sm shadow-md hover:bg-[#5C7FB0] active:scale-95 transition-all"
+            >
+              匯出交易紀錄 (XLSX)
+            </button>
+          </div>
+        </div>
+
+        {renderConfirmRecurringModal()}
+      </div>
+    );
+  };
+
+  const renderAssets = () => {
+    const totalBankBalance = banks.reduce((sum, b) => {
+      const pocketTotal = b.pockets ? b.pockets.reduce((pSum, p) => pSum + p.balance, 0) : 0;
+      return sum + b.balance + pocketTotal;
+    }, 0);
+    const totalStockValue = Math.floor(stocks.reduce((sum, stock) => {
+      const latestPrice = stock.latestPrice || 0;
+      return sum + (stock.shares * latestPrice);
+    }, 0));
+    const totalAssets = totalBankBalance + totalStockValue;
+
+    const handleExportExcel = () => {
+      const start = parseISO(exportStartDate);
+      const end = parseISO(exportEndDate);
+      
+      const filteredTxs = transactions.filter(tx => {
+        const txDate = parseISO(tx.date);
+        return txDate >= start && txDate <= end;
+      });
+
+      if (filteredTxs.length === 0) {
+        showAlert('所選日期區間內無收支紀錄');
+        return;
+      }
+
+      const exportData = filteredTxs.map(tx => ({
+        '專案': tx.projectName || defaultProjectName,
+        '日期': tx.date,
+        '項目': tx.title,
+        '類型': tx.type === 'expense' ? '支出' : '收入',
+        '幣別': tx.currency || 'TWD',
+        '實際金額': tx.amount,
+        '自動換算金額 (TWD)': tx.convertedAmount || tx.amount,
+        '支付方式': tx.paymentMethod || '',
+        '信用卡': tx.bank || '',
+        '地區': tx.location || '國內',
+        '備註': tx.notes || ''
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "收支紀錄");
+      
+      XLSX.writeFile(workbook, `收支紀錄_${exportStartDate}_${exportEndDate}.xlsx`);
+    };
+
+    // Estimate bank deductions
+    const estimatedDeductions = cards.reduce((acc, card) => {
+      const spending = currentMonthTxs
+        .filter(tx => tx.type === 'expense' && tx.bank === card.name)
+        .reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+      
+      if (spending > 0) {
+        const bankName = card.deductionBank || card.bank;
+        if (!acc[bankName]) acc[bankName] = { total: 0, details: [] };
+        acc[bankName].total += spending;
+        acc[bankName].details.push({ cardName: card.name, billingDate: card.billingDate || '未設定', spending });
+      }
+      return acc;
+    }, {});
+
+    const assetCompositionData = [
+      { name: '數位銀行', value: totalBankBalance, color: '#5C7FB0' },
+      { name: '股票市值', value: totalStockValue, color: '#81C995' }
+    ];
+
+    const bankDistributionData = banks.map((b, index) => {
+      const colors = ['#5C7FB0', '#81C995', '#F6C28B', '#AEC6CF', '#D4A5A5'];
+      const pocketTotal = b.pockets ? b.pockets.reduce((pSum, p) => pSum + p.balance, 0) : 0;
+      const totalBalance = b.balance + pocketTotal;
+      return {
+        name: b.bank,
+        value: totalBalance,
+        isOverLimit: totalBalance > 100000,
+        color: totalBalance > 100000 ? '#F28B82' : colors[index % colors.length]
+      };
+    });
+
+    return (
+      <div className="flex-1 px-6 pt-10 pb-32 overflow-y-auto no-scrollbar">
+        <h1 className="text-2xl font-bold text-gray-800 mb-6">總資產</h1>
+        
+        <div className="bg-gradient-to-br from-[#5C7FB0] to-[#4A6B9C] p-6 rounded-3xl shadow-lg text-white mb-6">
+          <p className="text-white/80 text-sm font-medium mb-1">總資產淨值</p>
+          <div className="text-4xl font-bold mb-6 tracking-tight">$ {totalAssets.toLocaleString()}</div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white/10 rounded-2xl p-3">
+              <p className="text-white/70 text-xs mb-1">數位銀行</p>
+              <p className="text-lg font-bold">$ {totalBankBalance.toLocaleString()}</p>
+            </div>
+            <div className="bg-white/10 rounded-2xl p-3">
+              <p className="text-white/70 text-xs mb-1">股票市值</p>
+              <p className="text-lg font-bold">$ {totalStockValue.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">本月預估扣款 ({format(currentDate, 'M')}月)</h2>
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-gray-500 text-sm">本月總支出</span>
+            <span className="font-bold text-[#F28B82] text-lg">$ {totalExpense.toLocaleString()}</span>
+          </div>
+          {Object.keys(estimatedDeductions).length > 0 ? (
+            <div className="space-y-4 border-t border-gray-100 pt-4">
+              {Object.entries(estimatedDeductions).map(([bank, data]: [string, any]) => (
+                <div key={bank} className="mb-2 last:mb-0">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-bold text-gray-700 text-sm">{bank}</span>
+                    <span className="font-bold text-gray-800">$ {data.total.toLocaleString()}</span>
+                  </div>
+                  <div className="space-y-1.5 pl-3 border-l-2 border-gray-100">
+                    {data.details.map((detail: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center text-xs">
+                        <span className="text-gray-500">{detail.cardName} <span className="text-gray-400 ml-1">(繳款日: {detail.billingDate})</span></span>
+                        <span className="text-gray-500">$ {detail.spending.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-400 text-sm py-2">本月尚無信用卡預估扣款</p>
+          )}
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">近半年收支分析</h2>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#9ca3af' }} />
+                <RechartsTooltip 
+                  cursor={{ fill: '#f3f4f6' }}
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+                <Bar dataKey="支出" fill="#F28B82" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="收入" fill="#81C995" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">匯出收支報表</h2>
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">開始日期</label>
+                <input type="date" value={exportStartDate} onChange={e => setExportStartDate(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">結束日期</label>
+                <input type="date" value={exportEndDate} onChange={e => setExportEndDate(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+            </div>
+            <button 
+              onClick={handleExportExcel}
+              className="w-full py-3.5 bg-[#5C7FB0] text-white rounded-2xl font-bold text-sm shadow-[0_4px_12px_rgba(92,127,176,0.3)] hover:bg-[#4A6B8A] active:scale-95 transition-all"
+            >
+              匯出 Excel 報表 (XLSX)
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">資產組成比例</h2>
+          <div className="h-48 w-full mb-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={assetCompositionData} innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
+                  {assetCompositionData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value: number) => `$ ${value.toLocaleString()}`} />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">各銀行存款佔比</h2>
+          <div className="h-48 w-full mb-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={bankDistributionData} innerRadius={40} outerRadius={70} paddingAngle={2} dataKey="value">
+                  {bankDistributionData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip formatter={(value: number) => `$ ${value.toLocaleString()}`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-2 mt-4">
+            {bankDistributionData.map(b => (
+              <div key={b.name} className="flex justify-between items-center text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: b.color }}></div>
+                  <span className="text-gray-700">{b.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-gray-800">$ {b.value.toLocaleString()}</span>
+                  {b.isOverLimit && <AlertCircle size={14} className="text-[#F28B82]" />}
+                </div>
+              </div>
+            ))}
+          </div>
+          {bankDistributionData.some(b => b.isOverLimit) && (
+            <div className="mt-4 p-3 bg-red-50 rounded-2xl flex items-start gap-2 text-red-600 text-xs">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <p>部分銀行存款已超過 10 萬元，建議確認是否超過高利活存上限，可考慮將資金轉移至其他高利帳戶或進行投資。</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const exportToCSV = () => {
+    const header = ['日期', '項目', '類型', '幣別', '金額', '支付方式', '信用卡', '地區'];
+    const rows = transactions.map(tx => [
+      tx.date,
+      tx.title,
+      tx.type === 'expense' ? '支出' : '收入',
+      tx.currency || 'TWD',
+      tx.amount,
+      tx.paymentMethod,
+      tx.bank || '',
+      tx.location
+    ]);
+
+    const csvContent = [
+      header.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    // Add BOM for Excel Chinese support
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `記帳報表_${format(new Date(), 'yyyyMMdd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  const ProjectModal = () => {
+    const [newProjectName, setNewProjectName] = useState('');
+    const [newProjectLocation, setNewProjectLocation] = useState('國內');
+    const [settlementReport, setSettlementReport] = useState(null);
+    const [editingProjectId, setEditingProjectId] = useState(null);
+    const [editingProjectName, setEditingProjectName] = useState('');
+    const [deletingProjectId, setDeletingProjectId] = useState(null);
+
+    const handleAddProject = () => {
+      const trimmedName = newProjectName.trim();
+      if (!trimmedName) return;
+      if (projects.some(p => p.name === trimmedName)) {
+        showAlert('專案名稱已存在');
+        return;
+      }
+      const newProject: Project = {
+        id: Date.now().toString(),
+        name: trimmedName,
+        status: 'Active',
+        currency: newProjectLocation === '國外' ? 'USD' : 'TWD',
+        location: newProjectLocation
+      };
+      setProjects([...projects, newProject]);
+      setNewProjectName('');
+      setNewProjectLocation('國內');
+    };
+
+    const settleProject = (id: string) => {
+      const project = projects.find(p => p.id === id);
+      if (!project) return;
+
+      // Calculate settlement data
+      const projectTxs = transactions.filter(tx => tx.projectName === project.name && tx.type === 'expense');
+      const totalExpense = projectTxs.reduce((sum, tx) => sum + (tx.convertedAmount || tx.amount), 0);
+      
+      const cardUsage = projectTxs.reduce((acc, tx) => {
+        if (tx.paymentMethod === '信用卡' && tx.bank) {
+          acc[tx.bank] = (acc[tx.bank] || 0) + (tx.convertedAmount || tx.amount);
+        }
+        return acc;
+      }, {});
+      
+      const topCard = Object.entries(cardUsage).sort((a, b) => b[1] - a[1])[0];
+
+      const foreignTxs = projectTxs.filter(tx => tx.currency !== 'TWD');
+      const avgExchangeRate = foreignTxs.length > 0 
+        ? foreignTxs.reduce((sum, tx) => sum + ((tx.convertedAmount || tx.amount) / tx.amount), 0) / foreignTxs.length 
+        : null;
+
+      setProjects(projects.map(p => p.id === id ? { ...p, status: 'Archived' } : p));
+      
+      setSettlementReport({
+        projectName: project.name,
+        totalExpense,
+        topCard: topCard ? { name: topCard[0], amount: topCard[1] } : null,
+        avgExchangeRate
+      });
+    };
+
+    const handleDeleteProject = (id: string) => {
+      if (id === 'default') return; // Prevent deleting default project
+      const projectToDelete = projects.find(p => p.id === id);
+      if (projectToDelete) {
+        const defaultProjName = projects.find(p => p.id === 'default')?.name || '日常支出';
+        setTransactions(transactions.map(tx => 
+          tx.projectName === projectToDelete.name ? { ...tx, projectName: defaultProjName } : tx
+        ));
+      }
+      setProjects(projects.filter(p => p.id !== id));
+      setDeletingProjectId(null);
+    };
+
+    const handleSaveEditProject = (id: string) => {
+      const trimmedName = editingProjectName.trim();
+      if (!trimmedName) {
+        setEditingProjectId(null);
+        return;
+      }
+      
+      const projectToEdit = projects.find(p => p.id === id);
+      if (projectToEdit && projectToEdit.name !== trimmedName) {
+        if (projects.some(p => p.name === trimmedName)) {
+          showAlert('專案名稱已存在');
+          return;
+        }
+
+        const oldName = projectToEdit.name;
+        const newName = trimmedName;
+        
+        // Update transactions
+        setTransactions(transactions.map(tx => 
+          tx.projectName === oldName ? { ...tx, projectName: newName } : tx
+        ));
+        
+        // Update filter if it was the old name
+        if (accountingProjectFilter === oldName) {
+          setAccountingProjectFilter(newName);
+        }
+        
+        // Update project
+        setProjects(projects.map(p => 
+          p.id === id ? { ...p, name: newName } : p
+        ));
+      }
+      
+      setEditingProjectId(null);
+    };
+
+    return (
+      <CenterModalWrapper isOpen={isProjectModalOpen} onClose={() => { setIsProjectModalOpen(false); setSettlementReport(null); setEditingProjectId(null); setDeletingProjectId(null); }} title="專案管理">
+        {settlementReport ? (
+          <div className="text-center space-y-6 py-4">
+            <div className="text-6xl animate-bounce">🎉</div>
+            <h3 className="text-2xl font-bold text-gray-800">{settlementReport.projectName} 結算報告</h3>
+            <div className="bg-gray-50 p-6 rounded-2xl text-left space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-500">總花費 (TWD)</span>
+                <span className="text-xl font-bold text-[#F28B82]">$ {settlementReport.totalExpense.toLocaleString()}</span>
+              </div>
+              {settlementReport.topCard && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">最常刷卡</span>
+                  <span className="font-medium text-gray-800">{settlementReport.topCard.name} ($ {settlementReport.topCard.amount.toLocaleString()})</span>
+                </div>
+              )}
+              {settlementReport.avgExchangeRate && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">平均匯率</span>
+                  <span className="font-medium text-gray-800">{settlementReport.avgExchangeRate.toFixed(4)}</span>
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={() => setSettlementReport(null)}
+              className="w-full bg-[#5C7FB0] text-white py-4 rounded-2xl font-bold shadow-md hover:bg-[#4A6B8A] transition-colors active:scale-95"
+            >
+              完成
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={newProjectName} 
+                  onChange={e => setNewProjectName(e.target.value)} 
+                  placeholder="輸入新專案名稱 (如: 國外旅遊)" 
+                  className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5C7FB0]"
+                />
+                <select 
+                  value={newProjectLocation}
+                  onChange={e => setNewProjectLocation(e.target.value)}
+                  className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#5C7FB0]"
+                >
+                  <option value="國內">國內</option>
+                  <option value="國外">國外</option>
+                </select>
+                <button 
+                  onClick={handleAddProject}
+                  className="bg-[#5C7FB0] text-white px-6 rounded-2xl font-bold shadow-sm hover:bg-[#4A6B8A] transition-colors active:scale-95"
+                >
+                  新增
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto no-scrollbar">
+              {projects.map(project => (
+                <div key={project.id} className="bg-white border border-gray-100 p-4 rounded-2xl shadow-sm flex flex-col gap-3">
+                  {deletingProjectId === project.id ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm text-red-500 font-medium">確定要刪除嗎？相關紀錄將歸為「{projects.find(p => p.id === 'default')?.name || '日常支出'}」。</p>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleDeleteProject(project.id)}
+                          className="flex-1 bg-red-500 text-white py-2 rounded-xl font-bold text-sm"
+                        >
+                          確定刪除
+                        </button>
+                        <button 
+                          onClick={() => setDeletingProjectId(null)}
+                          className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-xl font-bold text-sm"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : editingProjectId === project.id ? (
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={editingProjectName} 
+                        onChange={e => setEditingProjectName(e.target.value)} 
+                        className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-2 outline-none focus:ring-2 focus:ring-[#5C7FB0]"
+                        autoFocus
+                      />
+                      <button 
+                        onClick={() => handleSaveEditProject(project.id)}
+                        className="bg-[#5C7FB0] text-white px-4 rounded-xl font-bold text-sm"
+                      >
+                        儲存
+                      </button>
+                      <button 
+                        onClick={() => setEditingProjectId(null)}
+                        className="bg-gray-100 text-gray-600 px-4 rounded-xl font-bold text-sm"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-bold text-gray-800">{project.name} {project.id === 'default' && <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded ml-1 font-normal">預設</span>}</h4>
+                        <span className={`text-xs px-2 py-1 rounded-full ${project.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {project.status === 'Active' ? '進行中' : '已結案'}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            setEditingProjectId(project.id);
+                            setEditingProjectName(project.name);
+                          }}
+                          className="p-2 bg-gray-50 text-gray-600 rounded-xl hover:bg-gray-100 transition-colors"
+                          title="編輯專案名稱"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        {project.status === 'Active' && project.id !== 'default' && (
+                          <button 
+                            onClick={() => settleProject(project.id)}
+                            className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
+                            title="結算專案"
+                          >
+                            <CheckCircle2 size={18} />
+                          </button>
+                        )}
+                        {project.id !== 'default' && (
+                          <button 
+                            onClick={() => setDeletingProjectId(project.id)}
+                            className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors"
+                            title="刪除專案"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {projects.length === 0 && (
+                <p className="text-center text-gray-400 py-8">尚無專案</p>
+              )}
+            </div>
+          </div>
+        )}
+      </CenterModalWrapper>
+    );
+  };
+
+  const TxModal = () => {
+    const [tx, setTx] = useState(editingTx || { id: '', title: '', amount: 0, convertedAmount: 0, type: 'expense', category: categories[0], date: format(new Date(), 'yyyy-MM-dd'), paymentMethod: '現金', bank: '', location: '國內', currency: 'TWD', notes: '', projectName: defaultProjectName });
+    const [suggestions, setSuggestions] = useState([]);
+    const [rates, setRates] = useState({ TWD: 1 });
+    const [isFetchingRate, setIsFetchingRate] = useState(false);
+    
+    useEffect(() => {
+      const fetchRates = async () => {
+        try {
+          setIsFetchingRate(true);
+          const res = await fetch('https://open.er-api.com/v6/latest/TWD');
+          const data = await res.json();
+          if (data && data.rates) {
+            // API returns rates relative to TWD (e.g., USD: 0.031)
+            // We want TWD relative to other (e.g., 1 / 0.031 = 32.2)
+            setRates(data.rates);
+          }
+        } catch (err) {
+          console.error("匯率獲取失敗", err);
+        } finally {
+          setIsFetchingRate(false);
+        }
+      };
+      fetchRates();
+    }, []);
+
+    useEffect(() => {
+      const selectedProject = projects.find(p => p.name === tx.projectName);
+      if (selectedProject) {
+        setTx(prev => {
+          let updates = {};
+          if (selectedProject.location === '國外' && prev.location !== '國外') {
+            updates.location = '國外';
+          }
+          if (selectedProject.currency !== 'TWD' && prev.currency !== selectedProject.currency) {
+            updates.currency = selectedProject.currency;
+          }
+          return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+        });
+      }
+    }, [tx.projectName, projects]);
+
+    useEffect(() => {
+      if (tx.currency === 'TWD') {
+        setTx(prev => ({ ...prev, convertedAmount: prev.amount }));
+      } else if (rates[tx.currency]) {
+        // Amount is in foreign currency. Rate is TWD per 1 Foreign? 
+        // No, the API 'latest/TWD' returns: 1 TWD = X Foreign.
+        // So 1 Foreign = 1/X TWD.
+        const twdAmount = Math.round(tx.amount / rates[tx.currency]);
+        setTx(prev => ({ ...prev, convertedAmount: twdAmount }));
+      }
+    }, [tx.amount, tx.currency, rates]);
+    const [newCategory, setNewCategory] = useState('');
+    const [isAddingCategory, setIsAddingCategory] = useState(false);
+    const [isEditingCategories, setIsEditingCategories] = useState(false);
+
+    const [newPaymentMethod, setNewPaymentMethod] = useState('');
+    const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
+    const [isEditingPaymentMethods, setIsEditingPaymentMethods] = useState(false);
+
+    const [isEditingItems, setIsEditingItems] = useState(false);
+    const [newItemName, setNewItemName] = useState('');
+    const [newItemCategory, setNewItemCategory] = useState(categories[0]);
+
+    const removeCategory = (catToRemove: string) => {
+      const newCategories = categories.filter(c => c !== catToRemove);
+      setCategories(newCategories);
+      if (tx.category === catToRemove) {
+        setTx({ ...tx, category: newCategories[0] || '' });
+      }
+    };
+
+    const removePaymentMethod = (pmToRemove: string) => {
+      const newPMs = paymentMethods.filter(pm => pm !== pmToRemove);
+      setPaymentMethods(newPMs);
+      if (tx.paymentMethod === pmToRemove) {
+        setTx({ ...tx, paymentMethod: newPMs[0] || '現金' });
+      }
+    };
+
+    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setTx({ ...tx, title: val });
+      if (val.length > 0) {
+        const matches = transactions.filter(t => t.title.includes(val)).filter((v, i, a) => a.findIndex(t => t.title === v.title) === i).slice(0, 3);
+        setSuggestions(matches);
+      } else {
+        setSuggestions([]);
+      }
+    };
+
+    const applySuggestion = (s: Transaction) => {
+      setTx({ ...tx, title: s.title, amount: s.amount, category: s.category, type: s.type, paymentMethod: s.paymentMethod, bank: s.bank, notes: s.notes || '' });
+      setSuggestions([]);
+    };
+
+    const save = () => {
+      if (!tx.title || !tx.amount) return;
+      let newTxs;
+      if (editingTx) {
+        newTxs = transactions.map(t => t.id === tx.id ? tx : t);
+      } else {
+        newTxs = [{ ...tx, id: generateId() }, ...transactions];
+      }
+      setTransactions(newTxs);
+      console.log("帳務資料已儲存", tx);
+      setIsTxModalOpen(false);
+    };
+
+    const remove = () => {
+      setTransactions(transactions.filter(t => t.id !== tx.id));
+      setIsTxModalOpen(false);
+    };
+
+    const addCategory = () => {
+      if (newCategory && !categories.includes(newCategory)) {
+        setCategories([...categories, newCategory]);
+        setTx({ ...tx, category: newCategory });
+        setNewCategory('');
+        setIsAddingCategory(false);
+      }
+    };
+
+    return (
+      <CenterModalWrapper isOpen={isTxModalOpen} onClose={() => setIsTxModalOpen(false)} title={editingTx ? "編輯記帳" : "新增記帳"}>
+        <div className="space-y-5">
+          <div className="flex gap-4">
+            <button onClick={() => setTx({ ...tx, type: 'expense' })} className={`flex-1 py-3 rounded-2xl font-bold transition-all ${tx.type === 'expense' ? 'bg-[#5C7FB0] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>支出</button>
+            <button onClick={() => setTx({ ...tx, type: 'income' })} className={`flex-1 py-3 rounded-2xl font-bold transition-all ${tx.type === 'income' ? 'bg-[#81C995] text-white shadow-md' : 'bg-gray-100 text-gray-500'}`}>收入</button>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">所屬專案</label>
+            <select 
+              value={tx.projectName || defaultProjectName} 
+              onChange={e => setTx({ ...tx, projectName: e.target.value })} 
+              className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] appearance-none"
+            >
+              {projects.filter(p => p.status === 'Active' || p.name === tx.projectName).map(p => (
+                <option key={p.id} value={p.name}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-2 ml-1">
+              <label className="block text-sm font-medium text-gray-500">項目名稱</label>
+              <button 
+                onClick={() => setIsEditingItems(!isEditingItems)} 
+                className="text-xs font-bold text-[#5C7FB0] bg-[#5C7FB0]/10 px-3 py-1.5 rounded-lg"
+              >
+                {isEditingItems ? '完成' : '管理項目'}
+              </button>
+            </div>
+            <div className="relative">
+              <input 
+                type="text" 
+                value={tx.title} 
+                onChange={handleTitleChange} 
+                placeholder="輸入或選擇項目名稱..." 
+                list="item-suggestions"
+                className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all" 
+              />
+              <datalist id="item-suggestions">
+                {Object.keys(itemMap).map(item => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+              {isEditingItems && (
+                <div className="mt-3 p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-3">
+                  <div className="flex gap-2">
+                    <input type="text" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="新項目名稱" className="flex-1 bg-white rounded-xl px-3 py-2 text-sm border border-gray-200" />
+                    <button onClick={() => { if(newItemName) { setItemMap({...itemMap, [newItemName]: '一般'}); setNewItemName(''); } }} className="bg-[#5C7FB0] text-white px-3 rounded-xl text-sm font-bold">新增</button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1">
+                    {Object.entries(itemMap).map(([name, cat]) => (
+                      <div key={name} className="bg-white border border-gray-200 px-3 py-1 rounded-full text-xs flex items-center gap-2 shadow-sm">
+                        <span>{name}</span>
+                        <button onClick={() => { const newMap = {...itemMap}; delete newMap[name]; setItemMap(newMap); }} className="text-red-400"><X size={12} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">幣別</label>
+              <div className="relative">
+                <select 
+                  value={tx.currency || 'TWD'} 
+                  onChange={e => setTx({ ...tx, currency: e.target.value })}
+                  className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all appearance-none"
+                >
+                  {currencies.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {isFetchingRate && <div className="absolute right-8 top-1/2 -translate-y-1/2"><RefreshCw size={14} className="animate-spin text-gray-400" /></div>}
+              </div>
+            </div>
+            <div className="flex-[2]">
+              <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">
+                {tx.currency === 'TWD' ? '金額' : `實際金額 (${tx.currency})`}
+              </label>
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xl">
+                  {tx.currency === 'USD' ? '$' : tx.currency === 'JPY' ? '¥' : tx.currency === 'EUR' ? '€' : '$'}
+                </span>
+                <input type="number" value={tx.amount || ''} onChange={e => setTx({ ...tx, amount: Number(e.target.value) })} placeholder="0" className="w-full bg-gray-50 border-none rounded-2xl py-3 pl-10 pr-4 text-xl font-bold text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all" />
+              </div>
+            </div>
+          </div>
+
+          {tx.currency !== 'TWD' && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-blue-50 p-4 rounded-2xl border border-blue-100"
+            >
+              <div className="flex justify-between items-center">
+                <div className="text-xs font-bold text-blue-600">自動換算金額 (TWD)</div>
+                <div className="text-[10px] text-blue-400">參考匯率: 1 {tx.currency} ≈ {(1 / (rates[tx.currency] || 1)).toFixed(4)} TWD</div>
+              </div>
+              <div className="mt-2 text-2xl font-black text-[#5C7FB0]">
+                $ {tx.convertedAmount.toLocaleString()}
+              </div>
+            </motion.div>
+          )}
+
+          <div>
+            <div className="flex justify-between items-center mb-2 ml-1">
+              <label className="block text-sm font-medium text-gray-500">分類</label>
+              <button 
+                onClick={() => {
+                  setIsEditingCategories(!isEditingCategories);
+                  setIsAddingCategory(false);
+                }} 
+                className="text-xs font-bold text-[#5C7FB0] bg-[#5C7FB0]/10 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
+              >
+                {isEditingCategories ? '完成編輯' : '編輯分類'}
+              </button>
+            </div>
+            <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+              {categories.map((cat) => (
+                <div key={cat} className="relative flex-shrink-0">
+                  <button 
+                    onClick={() => { if (!isEditingCategories) setTx({ ...tx, category: cat }); }} 
+                    className={`whitespace-nowrap px-5 py-2.5 rounded-xl font-medium text-sm transition-colors ${tx.category === cat && !isEditingCategories ? getCategoryColor(cat, tx.type) + ' shadow-sm' : 'bg-gray-50 text-gray-600 border border-transparent'} ${isEditingCategories ? 'pr-10' : ''}`}
+                  >
+                    {cat}
+                  </button>
+                  {isEditingCategories && (
+                    <button 
+                      onClick={() => removeCategory(cat)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 bg-red-100 text-red-500 rounded-full flex items-center justify-center hover:bg-red-200"
+                    >
+                      <X size={12} strokeWidth={3} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {!isEditingCategories && (
+                <button onClick={() => setIsAddingCategory(true)} className="whitespace-nowrap px-5 py-2.5 rounded-xl font-medium text-sm bg-gray-100 text-gray-500 border border-dashed border-gray-300 hover:bg-gray-200 transition-colors flex-shrink-0">
+                  + 新增
+                </button>
+              )}
+            </div>
+            {isAddingCategory && !isEditingCategories && (
+              <div className="flex gap-2 mt-2">
+                <input type="text" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="新分類名稱" className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+                <button onClick={addCategory} className="bg-[#5C7FB0] text-white px-4 rounded-xl text-sm font-bold">確認</button>
+                <button onClick={() => setIsAddingCategory(false)} className="bg-gray-200 text-gray-600 px-4 rounded-xl text-sm font-bold">取消</button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">日期</label>
+              <input type="date" value={tx.date} onChange={e => setTx({ ...tx, date: e.target.value })} className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">地區</label>
+              <div className="flex bg-gray-50 rounded-2xl p-1">
+                <button 
+                  onClick={() => setTx({ ...tx, location: '國內' })}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tx.location === '國內' ? 'bg-white text-[#5C7FB0] shadow-sm' : 'text-gray-400'}`}
+                >
+                  國內
+                </button>
+                <button 
+                  onClick={() => setTx({ ...tx, location: '國外' })}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tx.location === '國外' ? 'bg-white text-[#5C7FB0] shadow-sm' : 'text-gray-400'}`}
+                >
+                  國外
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-500 ml-1">支付方式</label>
+                <button onClick={() => setIsEditingPaymentMethods(!isEditingPaymentMethods)} className="text-[#5C7FB0] text-xs font-bold flex items-center gap-1">
+                  <Edit2 size={12} /> {isEditingPaymentMethods ? '完成' : '編輯'}
+                </button>
+              </div>
+              
+              {isEditingPaymentMethods ? (
+                <div className="bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {paymentMethods.map(pm => (
+                      <div key={pm} className="bg-white border border-gray-200 px-3 py-1.5 rounded-full text-sm flex items-center gap-2 shadow-sm">
+                        {pm}
+                        <button onClick={() => removePaymentMethod(pm)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  {isAddingPaymentMethod ? (
+                    <div className="flex gap-2">
+                      <input autoFocus type="text" value={newPaymentMethod} onChange={e => setNewPaymentMethod(e.target.value)} placeholder="新支付方式..." className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-[#5C7FB0]" />
+                      <button onClick={() => { if(newPaymentMethod) { setPaymentMethods([...paymentMethods, newPaymentMethod]); setNewPaymentMethod(''); setIsAddingPaymentMethod(false); } }} className="bg-[#5C7FB0] text-white px-3 py-1.5 rounded-xl text-sm font-bold">新增</button>
+                      <button onClick={() => setIsAddingPaymentMethod(false)} className="bg-gray-200 text-gray-600 px-3 py-1.5 rounded-xl text-sm font-bold">取消</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setIsAddingPaymentMethod(true)} className="text-[#5C7FB0] text-sm font-bold flex items-center gap-1"><Plus size={16} /> 新增支付方式</button>
+                  )}
+                </div>
+              ) : (
+                <div className="relative">
+                  <select value={tx.paymentMethod} onChange={e => setTx({ ...tx, paymentMethod: e.target.value, bank: e.target.value === '現金' ? '' : tx.bank })} className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all appearance-none">
+                    {paymentMethods.map(pm => <option key={pm} value={pm}>{pm}</option>)}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                    <ChevronRight size={20} className="rotate-90" />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {tx.paymentMethod !== '現金' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">銀行 / 信用卡</label>
+              <div className="relative">
+                <select value={tx.bank} onChange={e => setTx({ ...tx, bank: e.target.value })} className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all appearance-none">
+                  <option value="">請選擇...</option>
+                  <optgroup label="網銀帳戶">
+                    {banks.map(b => <option key={b.id} value={b.bank}>{b.bank}</option>)}
+                  </optgroup>
+                  <optgroup label="信用卡">
+                    {cards.map(c => <option key={c.id} value={c.name}>{c.bank} - {c.name}</option>)}
+                  </optgroup>
+                  <option value="其他">其他</option>
+                </select>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                  <ChevronRight size={20} className="rotate-90" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-500 mb-2 ml-1">備註</label>
+            <textarea 
+              value={tx.notes} 
+              onChange={e => setTx({ ...tx, notes: e.target.value })} 
+              placeholder="輸入備註資訊..." 
+              className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-gray-800 focus:ring-2 focus:ring-[#5C7FB0] outline-none transition-all h-20 resize-none"
+            />
+          </div>
+
+          <div className="sticky bottom-0 bg-white pt-4 pb-2 flex gap-3 mt-6 border-t border-gray-100">
+            {editingTx && (
+              <button onClick={remove} className="p-4 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-100 transition-colors">
+                <Trash2 size={24} />
+              </button>
+            )}
+            <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-[0_8px_20px_rgba(92,127,176,0.3)] active:scale-95 transition-transform">
+              儲存紀錄
+            </button>
+          </div>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const CardModal = () => {
+    const [card, setCard] = useState(editingCard || { 
+      id: '', bank: '', name: '', expiry: '', spendingLimit: 0, cashbackRate: 0, channels: '', cashbackExpiry: '', notes: '', billingDate: '', paymentMethod: '', deductionBank: '', sortOrder: 99,
+      intlProjectName: '', intlDesc: '', intlCashbackRate: 0, intlCashbackLimit: '', intlCashbackExpiry: '', intlThreshold: '', intlNotes: '', showIntl: false
+    });
+    const save = () => {
+      if (!card.bank || !card.name) return;
+      let newCards;
+      if (editingCard) {
+        newCards = cards.map(c => c.id === card.id ? card : c);
+      } else {
+        newCards = [...cards, { ...card, id: generateId() }];
+      }
+      setCards(newCards);
+      console.log("信用卡資料已儲存", card);
+      setIsCardModalOpen(false);
+    };
+    const remove = () => { setCards(cards.filter(c => c.id !== card.id)); setIsCardModalOpen(false); };
+
+    const isExpired = useMemo(() => {
+      if (!card.expiry) return false;
+      const [year, month] = card.expiry.split('-').map(Number);
+      if (isNaN(year) || isNaN(month)) return false;
+      const expiryDate = new Date(year, month - 1, 1);
+      return isValid(expiryDate) && isBefore(expiryDate, new Date());
+    }, [card.expiry]);
+
+    return (
+      <CenterModalWrapper isOpen={isCardModalOpen} onClose={() => setIsCardModalOpen(false)} title={editingCard ? "編輯信用卡" : "新增信用卡"}>
+        <div className="space-y-4">
+          {isExpired && (
+            <div className="bg-red-50 p-4 rounded-2xl flex items-start gap-3 text-red-600 border border-red-100">
+              <AlertCircle size={20} className="shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">卡片已到期</p>
+                <p className="text-xs">此卡片有效期限已過，請記得更換新卡號並更新資訊。</p>
+              </div>
+            </div>
+          )}
+          <div className="bg-gray-50 p-4 rounded-3xl space-y-4">
+            <h3 className="text-sm font-bold text-gray-800 flex items-center gap-2">
+              <CreditCard size={18} className="text-[#5C7FB0]" /> 基本資訊
+            </h3>
+            <input type="text" value={card.bank} onChange={e => setCard({ ...card, bank: e.target.value })} placeholder="銀行名稱 (例: 玉山銀行)" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+            <input type="text" value={card.name} onChange={e => setCard({ ...card, name: e.target.value })} placeholder="卡片名稱 (例: UBear卡)" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">有效期限 (YYYY-MM)</label>
+                <input type="month" value={card.expiry} onChange={e => setCard({ ...card, expiry: e.target.value })} className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">刷卡上限 ($)</label>
+                <input type="number" value={card.spendingLimit || ''} onChange={e => setCard({ ...card, spendingLimit: Number(e.target.value) })} placeholder="10000" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">回饋比例 (%)</label>
+                <input type="number" value={card.cashbackRate || ''} onChange={e => setCard({ ...card, cashbackRate: Number(e.target.value) })} placeholder="10" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">回饋有效日期</label>
+                <input type="date" value={card.cashbackExpiry} onChange={e => setCard({ ...card, cashbackExpiry: e.target.value })} className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 ml-1">合作通路</label>
+              <input type="text" value={card.channels} onChange={e => setCard({ ...card, channels: e.target.value })} placeholder="Line pay..." className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 ml-1">備註</label>
+              <input type="text" value={card.notes} onChange={e => setCard({ ...card, notes: e.target.value })} placeholder="主力卡..." className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">繳款日</label>
+                <div className="bg-white rounded-2xl py-3 px-4 border border-gray-100 flex items-center text-gray-700 text-sm">
+                  <span>每月</span>
+                  <select 
+                    value={card.billingDate?.match(/\d+/)?.[0] || ''} 
+                    onChange={e => setCard({ ...card, billingDate: e.target.value ? `每月${e.target.value}號繳款` : '' })} 
+                    className="mx-1 bg-gray-50 text-[#5C7FB0] font-bold rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-[#5C7FB0] appearance-none text-center cursor-pointer"
+                  >
+                    <option value="">--</option>
+                    {Array.from({length: 31}, (_, i) => i + 1).map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                  <span>號繳款</span>
+                </div>
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">自訂排序 (數字小在前)</label>
+                <input type="number" value={card.sortOrder || ''} onChange={e => setCard({ ...card, sortOrder: Number(e.target.value) })} placeholder="1" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] border border-gray-100" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 ml-1">繳款銀行</label>
+              <select 
+                value={card.deductionBank || ''} 
+                onChange={e => setCard({ ...card, deductionBank: e.target.value })} 
+                className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] appearance-none border border-gray-100"
+              >
+                <option value="">請選擇繳款網銀</option>
+                {banks.map(b => (
+                  <option key={b.id} value={b.bank}>{b.bank}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 ml-1">帳單結帳日</label>
+              <div className="bg-white rounded-2xl py-3 px-4 border border-gray-100 flex items-center text-gray-700 text-sm w-fit">
+                <span>每月</span>
+                <select 
+                  value={card.paymentMethod?.match(/\d+/)?.[0] || ''} 
+                  onChange={e => setCard({ ...card, paymentMethod: e.target.value ? `每月${e.target.value}號出帳` : '' })} 
+                  className="mx-1 bg-gray-50 text-[#5C7FB0] font-bold rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-[#5C7FB0] appearance-none text-center cursor-pointer"
+                >
+                  <option value="">--</option>
+                  {Array.from({length: 31}, (_, i) => i + 1).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <span>號出帳</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-sky-50 p-4 rounded-3xl space-y-4 border border-sky-100">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-sky-800 flex items-center gap-2">
+                <TrendingUp size={18} className="text-sky-500" /> 專案
+              </h3>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setCard({
+                    ...card,
+                    intlProjectName: '', intlDesc: '', intlCashbackRate: 0, intlCashbackLimit: '', intlCashbackExpiry: '', intlThreshold: '', intlNotes: '', showIntl: false
+                  })}
+                  className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-1 rounded-md"
+                >
+                  一鍵清除專案資訊
+                </button>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={card.showIntl || false} 
+                    onChange={e => setCard({ ...card, showIntl: e.target.checked })}
+                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="text-xs font-bold text-sky-700">顯示</span>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-sky-600 mb-1 ml-1">專案名稱</label>
+              <input type="text" value={card.intlProjectName || ''} onChange={e => setCard({ ...card, intlProjectName: e.target.value })} placeholder="例: 國外回饋" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+            </div>
+
+            <div>
+              <label className="block text-xs text-sky-600 mb-1 ml-1">國外回饋說明</label>
+              <input type="text" value={card.intlDesc || ''} onChange={e => setCard({ ...card, intlDesc: e.target.value })} placeholder="註記細節，如「國外實體限定」" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-sky-600 mb-1 ml-1">回饋比例 (%)</label>
+                <input type="number" value={card.intlCashbackRate || ''} onChange={e => setCard({ ...card, intlCashbackRate: Number(e.target.value) })} placeholder="11" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-sky-600 mb-1 ml-1">刷卡上限</label>
+                <input type="text" value={card.intlCashbackLimit || ''} onChange={e => setCard({ ...card, intlCashbackLimit: e.target.value })} placeholder="例: 6250" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-sky-600 mb-1 ml-1">回饋有效日期</label>
+                <input type="date" value={card.intlCashbackExpiry || ''} onChange={e => setCard({ ...card, intlCashbackExpiry: e.target.value })} className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-sky-600 mb-1 ml-1">門檻</label>
+                <input type="text" value={card.intlThreshold || ''} onChange={e => setCard({ ...card, intlThreshold: e.target.value })} placeholder="例: 需自動扣繳" className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-sky-600 mb-1 ml-1">備註</label>
+              <input type="text" value={card.intlNotes || ''} onChange={e => setCard({ ...card, intlNotes: e.target.value })} placeholder="關鍵備註..." className="w-full bg-white rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-sky-500 border border-sky-100" />
+            </div>
+          </div>
+
+          <div className="sticky bottom-0 bg-white pt-4 pb-2 flex gap-3 mt-6 border-t border-gray-100">
+            {editingCard && <button onClick={remove} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24} /></button>}
+            <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-md active:scale-95">儲存卡片</button>
+          </div>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const BankModal = () => {
+    const [bank, setBank] = useState(editingBank || { 
+      id: '', bank: '', balance: 0, lastUpdated: format(new Date(), 'yyyy-MM-dd'),
+      apy: 1.5, highInterestLimit: 100000, payoutDay: 21,
+      tasks: [], pockets: []
+    });
+    
+    const [newTaskDesc, setNewTaskDesc] = useState('');
+    const [newPocket, setNewPocket] = useState({ name: '', balance: 0, apy: 2.0, duration: '1年', endDate: format(addMonths(new Date(), 12), 'yyyy-MM-dd') });
+
+    const save = () => {
+      if (!bank.bank) return;
+      let newBanks;
+      if (editingBank) {
+        newBanks = banks.map(b => b.id === bank.id ? bank : b);
+      } else {
+        newBanks = [...banks, { ...bank, id: generateId() }];
+      }
+      setBanks(newBanks);
+      console.log("銀行資料已儲存", bank);
+      setIsBankModalOpen(false);
+    };
+    const remove = () => { setBanks(banks.filter(b => b.id !== bank.id)); setIsBankModalOpen(false); };
+
+    const addTask = () => {
+      if (!newTaskDesc) return;
+      setBank({
+        ...bank,
+        tasks: [...bank.tasks, { id: generateId(), description: newTaskDesc, isCompleted: false }]
+      });
+      setNewTaskDesc('');
+    };
+
+    const addPocket = () => {
+      if (!newPocket.name || !newPocket.balance) return;
+      setBank({
+        ...bank,
+        pockets: [...bank.pockets, { ...newPocket, id: generateId() }]
+      });
+      setNewPocket({ name: '', balance: 0, apy: 2.0, duration: '1年', endDate: format(addMonths(new Date(), 12), 'yyyy-MM-dd') });
+    };
+
+    return (
+      <CenterModalWrapper isOpen={isBankModalOpen} onClose={() => setIsBankModalOpen(false)} title={editingBank ? "編輯網銀" : "新增網銀"}>
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto no-scrollbar pr-1">
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">基本資訊</h3>
+            <input type="text" value={bank.bank} onChange={e => setBank({ ...bank, bank: e.target.value })} placeholder="銀行名稱 (例: Richart)" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">儲值餘額 ($)</label>
+                <input type="number" value={bank.balance || ''} onChange={e => setBank({ ...bank, balance: Number(e.target.value) })} placeholder="0" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">最後更新日期</label>
+                <input type="date" value={bank.lastUpdated} onChange={e => setBank({ ...bank, lastUpdated: e.target.value })} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">高利活存設定</h3>
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">年利率 (APY %)</label>
+                <input type="number" step="0.1" value={bank.apy || ''} onChange={e => setBank({ ...bank, apy: Number(e.target.value) })} placeholder="1.5" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1 ml-1">高利額度 ($)</label>
+                <input type="number" value={bank.highInterestLimit || ''} onChange={e => setBank({ ...bank, highInterestLimit: Number(e.target.value) })} placeholder="100000" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 ml-1">每月發息日 (1-31)</label>
+              <input type="number" min="1" max="31" value={bank.payoutDay || ''} onChange={e => setBank({ ...bank, payoutDay: Number(e.target.value) })} placeholder="21" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">任務清單</h3>
+            <div className="space-y-2">
+              {bank.tasks.map(task => (
+                <div key={task.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-xl">
+                  <span className="text-xs text-gray-700">{task.description}</span>
+                  <button onClick={() => setBank({ ...bank, tasks: bank.tasks.filter(t => t.id !== task.id) })} className="text-red-400"><X size={14} /></button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input type="text" value={newTaskDesc} onChange={e => setNewTaskDesc(e.target.value)} placeholder="新增任務..." className="flex-1 bg-gray-50 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+                <button onClick={addTask} className="bg-[#5C7FB0] text-white px-3 rounded-xl text-xs font-bold">新增</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">口袋帳戶 / 專案</h3>
+            <div className="space-y-2">
+              {bank.pockets.map(pocket => (
+                <div key={pocket.id} className="flex justify-between items-center bg-blue-50 p-2 rounded-xl">
+                  <div className="text-[10px]">
+                    <div className="font-bold">{pocket.name}</div>
+                    <div>$ {pocket.balance} · {pocket.apy}%</div>
+                  </div>
+                  <button onClick={() => setBank({ ...bank, pockets: bank.pockets.filter(p => p.id !== pocket.id) })} className="text-red-400"><X size={14} /></button>
+                </div>
+              ))}
+              <div className="bg-gray-50 p-3 rounded-2xl space-y-2">
+                <input type="text" value={newPocket.name} onChange={e => setNewPocket({ ...newPocket, name: e.target.value })} placeholder="專案名稱" className="w-full bg-white rounded-xl px-3 py-2 text-xs outline-none" />
+                <div className="flex gap-2">
+                  <input type="number" value={newPocket.balance || ''} onChange={e => setNewPocket({ ...newPocket, balance: Number(e.target.value) })} placeholder="金額" className="flex-1 bg-white rounded-xl px-3 py-2 text-xs outline-none" />
+                  <input type="number" step="0.1" value={newPocket.apy || ''} onChange={e => setNewPocket({ ...newPocket, apy: Number(e.target.value) })} placeholder="APY %" className="flex-1 bg-white rounded-xl px-3 py-2 text-xs outline-none" />
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={newPocket.duration} onChange={e => setNewPocket({ ...newPocket, duration: e.target.value })} placeholder="時長 (例: 1年)" className="flex-1 bg-white rounded-xl px-3 py-2 text-xs outline-none" />
+                  <input type="date" value={newPocket.endDate} onChange={e => setNewPocket({ ...newPocket, endDate: e.target.value })} className="flex-1 bg-white rounded-xl px-3 py-2 text-xs outline-none" />
+                </div>
+                <button onClick={addPocket} className="w-full bg-[#5C7FB0] text-white py-2 rounded-xl text-xs font-bold">新增專案</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white pt-4 pb-2 flex gap-3 mt-6 border-t border-gray-100">
+          {editingBank && <button onClick={remove} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24} /></button>}
+          <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-md active:scale-95">儲存帳戶</button>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const renderConfirmRecurringModal = () => {
+    if (!confirmingRecurring) return null;
+    const { stock, setting, date } = confirmingRecurring;
+    
+    const handleConfirm = () => {
+      if (actualRecPrice <= 0) return;
+      
+      const newShares = Math.round((setting.amount / actualRecPrice) * 100) / 100;
+      const newTx: StockTransaction = {
+        id: generateId(),
+        date: actualRecDate,
+        type: 'recurring',
+        shares: newShares,
+        amount: setting.amount,
+        price: actualRecPrice,
+        originalDay: setting.day,
+        securitiesBank: confirmBank
+      };
+
+      const updatedStock = {
+        ...stock,
+        shares: stock.shares + newShares,
+        historicalCost: stock.historicalCost + setting.amount,
+        transactions: [...stock.transactions, newTx],
+        lastUpdated: format(new Date(), 'yyyy-MM-dd')
+      };
+
+      setStocks(stocks.map(s => s.id === stock.id ? updatedStock : s));
+
+      // 自動連動帳務
+      const accountingTx: Transaction = {
+        id: generateId(),
+        title: `股票定額 - ${stock.code}`,
+        amount: setting.amount,
+        convertedAmount: setting.amount,
+        type: 'expense',
+        category: '股票',
+        date: actualRecDate,
+        paymentMethod: '銀行轉帳',
+        bank: confirmBank,
+        location: '國內',
+        currency: 'TWD',
+        notes: ''
+      };
+      setTransactions(prev => [accountingTx, ...prev]);
+
+      // 解除網銀自動扣款聯動 (根據使用者要求)
+      // setBanks(prev => prev.map(b => 
+      //   b.bank === confirmBank ? { ...b, balance: b.balance - setting.amount, lastUpdated: format(new Date(), 'yyyy-MM-dd') } : b
+      // ));
+
+      setConfirmingRecurring(null);
+      console.log("定期定額已確認並儲存", updatedStock);
+    };
+
+    return (
+      <CenterModalWrapper isOpen={!!confirmingRecurring} onClose={() => setConfirmingRecurring(null)} title="確認定期定額扣款">
+        <div className="space-y-6">
+          <div className="bg-gray-50 p-4 rounded-2xl">
+            <div className="text-sm font-bold text-gray-700 mb-1">{stock.name} ({stock.code})</div>
+            <div className="text-xs text-gray-500">預計扣款金額: <span className="text-orange-600 font-bold">${setting.amount.toLocaleString()}</span></div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400 ml-1">實際扣款日期</label>
+              <input type="date" value={actualRecDate} onChange={e => setActualRecDate(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-orange-400 font-bold" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400 ml-1">實際成交單價 (股價)</label>
+              <input type="number" step="0.01" value={actualRecPrice || ''} onChange={e => setActualRecPrice(Number(e.target.value))} placeholder="請輸入成交價" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-orange-400 font-bold text-lg" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400 ml-1">證券銀行</label>
+              <select value={confirmBank} onChange={e => setConfirmBank(e.target.value)} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-orange-400 font-bold appearance-none">
+                {banks.map(b => <option key={b.id} value={b.bank}>{b.bank}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-orange-50 p-4 rounded-2xl border border-orange-100">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-orange-700">預估購入股數</span>
+              <span className="text-lg font-bold text-orange-600">{actualRecPrice > 0 ? (setting.amount / actualRecPrice).toFixed(2) : '0.00'} 股</span>
+            </div>
+          </div>
+
+          <button onClick={handleConfirm} className="w-full py-4 bg-orange-500 text-white rounded-2xl font-bold text-lg shadow-md active:scale-95 transition-transform">
+            確認並記帳
+          </button>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const MemoModal = () => {
+    const [memo, setMemo] = useState(editingMemo || { id: '', title: '', person: '', amount: 0, type: 'monthly', startDate: format(new Date(), 'yyyy-MM'), payments: {}, records: [], isSettled: false, customMonths: [] });
+    
+    const toggleCustomMonth = (month: number) => {
+      const currentMonths = memo.customMonths || [];
+      if (currentMonths.includes(month)) {
+        setMemo({ ...memo, customMonths: currentMonths.filter(m => m !== month) });
+      } else {
+        setMemo({ ...memo, customMonths: [...currentMonths, month] });
+      }
+    };
+
+    const save = () => {
+      if (!memo.title || !memo.person) return;
+      let newMemos;
+      if (editingMemo) {
+        newMemos = memos.map(m => m.id === memo.id ? memo : m);
+      } else {
+        newMemos = [...memos, { ...memo, id: generateId() }];
+      }
+      setMemos(newMemos);
+      console.log("備忘錄資料已儲存", memo);
+      setIsMemoModalOpen(false);
+    };
+    const remove = () => { setMemos(memos.filter(m => m.id !== memo.id)); setIsMemoModalOpen(false); };
+
+    return (
+      <CenterModalWrapper isOpen={isMemoModalOpen} onClose={() => setIsMemoModalOpen(false)} title={editingMemo ? "編輯款項" : "新增款項"}>
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto no-scrollbar pr-1">
+          <div className="flex gap-2 p-1 bg-gray-100 rounded-xl">
+            <button onClick={() => setMemo({ ...memo, type: 'monthly', startDate: format(new Date(), 'yyyy-MM') })} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${memo.type === 'monthly' ? 'bg-white text-[#5C7FB0] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>每月</button>
+            <button onClick={() => setMemo({ ...memo, type: 'custom' })} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${memo.type === 'custom' ? 'bg-white text-[#5C7FB0] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>自定義</button>
+            <button onClick={() => setMemo({ ...memo, type: 'one-time', startDate: format(new Date(), 'yyyy-MM-dd') })} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${memo.type === 'one-time' ? 'bg-white text-[#5C7FB0] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>單次</button>
+          </div>
+
+          {memo.type === 'custom' && (
+            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200">
+              <label className="block text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">選擇收款月份</label>
+              <div className="grid grid-cols-4 gap-2">
+                {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+                  <button
+                    key={month}
+                    onClick={() => toggleCustomMonth(month)}
+                    className={`py-2 rounded-xl text-xs font-bold border transition-all ${memo.customMonths?.includes(month) ? 'bg-[#5C7FB0] text-white border-[#5C7FB0] shadow-sm' : 'bg-white text-gray-400 border-gray-200'}`}
+                  >
+                    {month}月
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <input type="text" value={memo.title} onChange={e => setMemo({ ...memo, title: e.target.value })} placeholder="項目名稱 (例: Netflix 分租)" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+          <input type="text" value={memo.person} onChange={e => setMemo({ ...memo, person: e.target.value })} placeholder="對象 (例: 小明)" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1 ml-1">{memo.type !== 'one-time' ? '每月金額 ($)' : '金額 ($)'}</label>
+              <input type="number" value={memo.amount || ''} onChange={e => setMemo({ ...memo, amount: Number(e.target.value) })} placeholder="220" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1 ml-1">{memo.type !== 'one-time' ? '起始月份' : '日期'}</label>
+              <input type={memo.type !== 'one-time' ? 'month' : 'date'} value={memo.startDate} onChange={e => setMemo({ ...memo, startDate: e.target.value })} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            </div>
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white pt-4 pb-2 flex gap-3 mt-6 border-t border-gray-100">
+          {editingMemo && <button onClick={remove} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24} /></button>}
+          <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-md active:scale-95">儲存備忘錄</button>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const RecordModal = () => {
+    const [record, setRecord] = useState(editingRecord || { id: '', title: '', date: format(new Date(), 'yyyy-MM-dd'), amount: 0, notes: '' });
+    
+    const save = () => {
+      if (!record.title || !activeMemoId) return;
+      
+      const memo = memos.find(m => m.id === activeMemoId);
+      
+      setMemos(memos.map(m => {
+        if (m.id === activeMemoId) {
+          const updatedRecords = editingRecord 
+            ? m.records.map(r => r.id === record.id ? record : r)
+            : [...(m.records || []), { ...record, id: generateId() }];
+          return { ...m, records: updatedRecords };
+        }
+        return m;
+      }));
+      
+      // 同步到帳務
+      if (!editingRecord && memo) {
+        const accountingTx: Transaction = {
+          id: generateId(),
+          title: `備忘錄收款: ${memo.title} - ${record.title}`,
+          amount: record.amount,
+          convertedAmount: record.amount,
+          type: 'income',
+          category: '代墊',
+          date: record.date,
+          paymentMethod: '現金', // 預設現金，可依需求調整
+          bank: '',
+          location: '國內',
+          currency: 'TWD',
+          notes: record.notes
+        };
+        setTransactions(prev => [accountingTx, ...prev]);
+      }
+
+      setIsRecordModalOpen(false);
+    };
+
+    const remove = () => {
+      setMemos(memos.map(m => {
+        if (m.id === activeMemoId) {
+          return { ...m, records: m.records.filter(r => r.id !== record.id) };
+        }
+        return m;
+      }));
+      setIsRecordModalOpen(false);
+    };
+
+    return (
+      <CenterModalWrapper isOpen={isRecordModalOpen} onClose={() => setIsRecordModalOpen(false)} title={editingRecord ? "編輯收款紀錄" : "新增收款紀錄"}>
+        <div className="space-y-4">
+          <input type="text" value={record.title} onChange={e => setRecord({ ...record, title: e.target.value })} placeholder="項目 (例: 2025收款)" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1 ml-1">收款日期</label>
+              <input type="date" value={record.date} onChange={e => setRecord({ ...record, date: e.target.value })} className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs text-gray-500 mb-1 ml-1">金額 ($)</label>
+              <input type="number" value={record.amount || ''} onChange={e => setRecord({ ...record, amount: Number(e.target.value) })} placeholder="1100" className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1 ml-1">備註</label>
+            <input type="text" value={record.notes} onChange={e => setRecord({ ...record, notes: e.target.value })} placeholder="2025年款項已結清..." className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0]" />
+          </div>
+          <div className="sticky bottom-0 bg-white pt-4 pb-2 flex gap-3 mt-6 border-t border-gray-100">
+            {editingRecord && <button onClick={remove} className="p-4 bg-red-50 text-red-500 rounded-2xl"><Trash2 size={24} /></button>}
+            <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-md active:scale-95">儲存紀錄</button>
+          </div>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  const StockModal = () => {
+    const [stock, setStock] = useState(editingStock || { 
+      id: '', name: '', code: '', shares: 0, historicalCost: 0, lastUpdated: format(new Date(), 'yyyy-MM-dd'), transactions: [], recurringSettings: []
+    });
+    
+    const [isManagingOptions, setIsManagingOptions] = useState(false);
+    const [newOptionName, setNewOptionName] = useState('');
+    const [newOptionCode, setNewOptionCode] = useState('');
+
+    // 定期定額設定暫存
+    const [newRecDay, setNewRecDay] = useState(13);
+    const [newRecAmount, setNewRecAmount] = useState(5000);
+    const [newRecStartDate, setNewRecStartDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+    // 單筆買入暫存
+    const [singleDate, setSingleDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+    const [singleShares, setSingleShares] = useState(0);
+    const [singleAmount, setSingleAmount] = useState(0);
+    const [singleBank, setSingleBank] = useState('永豐 大戶DAWHO');
+
+    const [newTransactions, setNewTransactions] = useState([]);
+
+    const save = () => {
+      if (!stock.name || !stock.code) return;
+      let newStocks;
+      if (editingStock) {
+        newStocks = stocks.map(s => s.id === stock.id ? stock : s);
+      } else {
+        newStocks = [...stocks, { ...stock, id: generateId() }];
+      }
+      setStocks(newStocks);
+      
+      // 只有在按下儲存後，才將本次新增的交易紀錄同步到帳務
+      if (newTransactions.length > 0) {
+        setTransactions(prev => [...newTransactions, ...prev]);
+      }
+      
+      console.log("股票資料已儲存", stock);
+      setIsStockModalOpen(false);
+    };
+
+    const addRecurringSetting = () => {
+      const day = Math.min(30, Math.max(1, newRecDay));
+      const newSetting: RecurringSetting = {
+        id: generateId(),
+        day: day,
+        amount: newRecAmount,
+        startDate: newRecStartDate
+      };
+      setStock({
+        ...stock,
+        recurringSettings: [...(stock.recurringSettings || []), newSetting]
+      });
+    };
+
+    const removeRecurringSetting = (id: string) => {
+      setStock({
+        ...stock,
+        recurringSettings: stock.recurringSettings.filter(s => s.id !== id)
+      });
+    };
+
+    const addTransaction = (type: 'single' | 'recurring') => {
+      let newShares = 0;
+      let newAmount = 0;
+      let date = '';
+      let price = 0;
+      let securitiesBank = singleBank;
+
+      if (type === 'recurring') {
+        return;
+      } else {
+        if (singleShares <= 0 || singleAmount <= 0) return;
+        newShares = singleShares;
+        newAmount = singleAmount;
+        date = singleDate;
+      }
+
+      const newTx: StockTransaction = { id: generateId(), date, type, shares: newShares, amount: newAmount, price, securitiesBank };
+      
+      setStock({
+        ...stock,
+        shares: stock.shares + newShares,
+        historicalCost: stock.historicalCost + newAmount,
+        transactions: [...stock.transactions, newTx],
+        lastUpdated: format(new Date(), 'yyyy-MM-dd')
+      });
+
+      // 暫存帳務連動紀錄，等按下儲存才正式寫入
+      const txLog: Transaction = {
+        id: generateId(),
+        title: `股票買入: ${stock.name} (單筆)`,
+        amount: newAmount,
+        convertedAmount: newAmount,
+        type: 'expense',
+        category: '股票',
+        date: date,
+        paymentMethod: '銀行轉帳',
+        bank: securitiesBank,
+        location: '國內',
+        currency: 'TWD',
+        notes: ''
+      };
+      setNewTransactions(prev => [txLog, ...prev]);
+      
+      // 重置輸入
+      setSingleShares(0);
+      setSingleAmount(0);
+    };
+
+    const removeOption = (id: string) => {
+      setStockOptions(stockOptions.filter(o => o.id !== id));
+    };
+
+    const addOption = () => {
+      if (!newOptionName || !newOptionCode) return;
+      setStockOptions([...stockOptions, { id: generateId(), name: newOptionName, code: newOptionCode }]);
+      setNewOptionName('');
+      setNewOptionCode('');
+    };
+
+    return (
+      <CenterModalWrapper isOpen={isStockModalOpen} onClose={() => setIsStockModalOpen(false)} title={editingStock ? "管理股票" : "新增股票"}>
+        <div className="space-y-6 max-h-[75vh] overflow-y-auto no-scrollbar pr-1">
+          
+          {/* 股票選擇 */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">股票名稱</label>
+              <button onClick={() => setIsManagingOptions(!isManagingOptions)} className="text-[#5C7FB0] text-xs font-bold bg-blue-50 px-3 py-1.5 rounded-xl">
+                {isManagingOptions ? '完成' : '編輯清單'}
+              </button>
+            </div>
+
+            {isManagingOptions ? (
+              <div className="bg-gray-50 p-4 rounded-2xl space-y-3 border border-gray-100">
+                <div className="space-y-2">
+                  {stockOptions.map(opt => (
+                    <div key={opt.id} className="flex justify-between items-center bg-white p-2 rounded-xl border border-gray-100">
+                      <span className="text-sm font-bold text-gray-700">{opt.name} ({opt.code})</span>
+                      <button onClick={() => removeOption(opt.id)} className="text-red-400 p-1"><Trash2 size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={newOptionName} onChange={e => setNewOptionName(e.target.value)} placeholder="名稱" className="flex-1 bg-white rounded-xl px-3 py-2 text-xs border border-gray-200" />
+                  <input type="text" value={newOptionCode} onChange={e => setNewOptionCode(e.target.value)} placeholder="代碼" className="w-20 bg-white rounded-xl px-3 py-2 text-xs border border-gray-200" />
+                  <button onClick={addOption} className="bg-[#5C7FB0] text-white px-3 rounded-xl text-xs font-bold">新增</button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative">
+                <select 
+                  value={stock.name} 
+                  onChange={e => {
+                    const opt = stockOptions.find(o => o.name === e.target.value);
+                    if (opt) setStock({ ...stock, name: opt.name, code: opt.code });
+                  }}
+                  className="w-full bg-gray-50 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-[#5C7FB0] appearance-none font-bold text-gray-800"
+                >
+                  <option value="">請選擇股票...</option>
+                  {stockOptions.map(opt => <option key={opt.id} value={opt.name}>{opt.name}</option>)}
+                </select>
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                  <ChevronRight size={20} className="rotate-90" />
+                </div>
+              </div>
+            )}
+            <div className="flex justify-between items-center px-1">
+              <span className="text-xs text-gray-400">股票代碼</span>
+              <span className="text-sm font-bold text-gray-700">{stock.code || '--'}</span>
+            </div>
+          </div>
+
+          {/* 定期定額設定 */}
+          <div className="bg-orange-50 p-5 rounded-3xl border border-orange-100 space-y-4">
+            <h3 className="text-sm font-bold text-orange-600 flex items-center gap-2">
+              <RefreshCw size={18} /> 定期定額設定
+            </h3>
+            
+            {/* 已有的設定列表 */}
+            <div className="space-y-2">
+              {stock.recurringSettings?.map(s => (
+                <div key={s.id} className="bg-white p-3 rounded-2xl border border-orange-100 flex justify-between items-center">
+                  <div>
+                    <div className="text-xs font-bold text-gray-700">每月 {s.day} 號 · ${s.amount.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-400">起始日: {s.startDate}</div>
+                  </div>
+                  <button onClick={() => removeRecurringSetting(s.id)} className="text-red-400 p-2"><Trash2 size={16} /></button>
+                </div>
+              ))}
+            </div>
+
+            {/* 新增設定 */}
+            <div className="bg-white/50 p-4 rounded-2xl border border-dashed border-orange-200 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orange-600 font-bold ml-1">扣款日</label>
+                  <input type="number" min="1" max="31" value={newRecDay} onChange={e => setNewRecDay(Number(e.target.value))} className="w-full bg-white border border-orange-100 rounded-xl py-2 px-3 text-sm outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orange-600 font-bold ml-1">扣款金額</label>
+                  <input type="number" value={newRecAmount} onChange={e => setNewRecAmount(Number(e.target.value))} className="w-full bg-white border border-orange-100 rounded-xl py-2 px-3 text-sm outline-none" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-orange-600 font-bold ml-1">起始日期</label>
+                <input type="date" value={newRecStartDate} onChange={e => setNewRecStartDate(e.target.value)} className="w-full bg-white border border-orange-100 rounded-xl py-2 px-3 text-sm outline-none" />
+              </div>
+              <button onClick={addRecurringSetting} className="w-full py-2 bg-orange-500 text-white rounded-xl text-xs font-bold shadow-sm">
+                + 新增定期定額設定
+              </button>
+            </div>
+          </div>
+
+          {/* 單筆買入記錄 */}
+          <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 space-y-4">
+            <h3 className="text-sm font-bold text-blue-600 flex items-center gap-2">
+              <Plus size={18} /> 單筆買入記錄
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-400 ml-1">購買股數</label>
+                <input type="number" value={singleShares || ''} onChange={e => setSingleShares(Number(e.target.value))} placeholder="1000" className="w-full bg-white rounded-xl py-2 px-3 text-sm border border-blue-100" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-400 ml-1">購買總金額</label>
+                <input type="number" value={singleAmount || ''} onChange={e => setSingleAmount(Number(e.target.value))} placeholder="73254" className="w-full bg-white rounded-xl py-2 px-3 text-sm border border-blue-100" />
+              </div>
+            </div>
+            <div className="flex justify-between items-center">
+              <input type="date" value={singleDate} onChange={e => setSingleDate(e.target.value)} className="bg-transparent text-xs text-blue-700 outline-none" />
+              <div className="flex items-center gap-2">
+                <select 
+                  value={singleBank} 
+                  onChange={e => setSingleBank(e.target.value)}
+                  className="bg-white border border-blue-100 rounded-xl px-2 py-1 text-[10px] outline-none"
+                >
+                  {banks.map(b => <option key={b.id} value={b.bank}>{b.bank}</option>)}
+                </select>
+                <button onClick={() => addTransaction('single')} className="bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95">確認買入</button>
+              </div>
+            </div>
+          </div>
+
+          {/* 總結數據 */}
+          <div className="bg-gray-50 p-5 rounded-3xl space-y-4">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">目前持倉總結</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-500 ml-1">目前總持有股數</label>
+                <input type="number" step="0.01" value={stock.shares} onChange={e => setStock({ ...stock, shares: Number(e.target.value) })} className="w-full bg-white rounded-2xl py-3 px-4 text-lg font-bold text-gray-800 border border-gray-100" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-gray-500 ml-1">歷史投入總本金</label>
+                <input type="number" value={stock.historicalCost} onChange={e => setStock({ ...stock, historicalCost: Number(e.target.value) })} className="w-full bg-white rounded-2xl py-3 px-4 text-lg font-bold text-gray-800 border border-gray-100" />
+              </div>
+            </div>
+            <div className="flex justify-between items-center px-1">
+              <span className="text-[10px] text-gray-400">最後更新日期</span>
+              <span className="text-xs font-bold text-gray-500">{stock.lastUpdated.replace(/-/g, '/')}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-4 sticky bottom-0 bg-white pb-2 border-t border-gray-100 mt-4">
+          {editingStock && (
+            <button onClick={() => { setStocks(stocks.filter(s => s.id !== stock.id)); setIsStockModalOpen(false); }} className="p-4 bg-red-50 text-red-500 rounded-2xl">
+              <Trash2 size={24} />
+            </button>
+          )}
+          <button onClick={save} className="flex-1 py-4 bg-[#5C7FB0] text-white rounded-2xl font-bold text-lg shadow-md active:scale-95">
+            儲存股票資訊
+          </button>
+        </div>
+      </CenterModalWrapper>
+    );
+  };
+
+  // --- Main Layout ---
+  return (
+    <div className="min-h-screen max-w-md mx-auto bg-[#F4F1ED] relative overflow-hidden flex flex-col font-sans shadow-xl">
+      {activeTab === '帳務' && renderAccounting()}
+      {activeTab === '信用卡' && renderCreditCards()}
+      {activeTab === '網銀' && renderBanking()}
+      {activeTab === '備忘錄' && renderMemos()}
+      {activeTab === '股票' && renderStocks()}
+      {activeTab === '總資產' && renderAssets()}
+
+      {/* Floating Bottom Navigation */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 pointer-events-none z-20">
+        <div className="bg-white rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.08)] px-4 py-3 flex justify-between items-center pointer-events-auto overflow-x-auto no-scrollbar gap-2">
+          <NavButton icon={Wallet} label="帳務" isActive={activeTab === '帳務'} onClick={() => setActiveTab('帳務')} />
+          <NavButton icon={CreditCard} label="信用卡" isActive={activeTab === '信用卡'} onClick={() => setActiveTab('信用卡')} />
+          <NavButton icon={Landmark} label="網銀" isActive={activeTab === '網銀'} onClick={() => setActiveTab('網銀')} />
+          <NavButton icon={NotebookPen} label="備忘錄" isActive={activeTab === '備忘錄'} onClick={() => setActiveTab('備忘錄')} />
+          <NavButton icon={TrendingUp} label="股票" isActive={activeTab === '股票'} onClick={() => setActiveTab('股票')} />
+          <NavButton icon={PieChartIcon} label="總資產" isActive={activeTab === '總資產'} onClick={() => setActiveTab('總資產')} />
+        </div>
+      </div>
+
+      {/* Floating Action Button (FAB) */}
+      <button 
+        onClick={() => {
+          if (activeTab === '帳務') { setEditingTx(null); setIsTxModalOpen(true); }
+          if (activeTab === '信用卡') { setEditingCard(null); setIsCardModalOpen(true); }
+          if (activeTab === '網銀') { setEditingBank(null); setIsBankModalOpen(true); }
+          if (activeTab === '備忘錄') { setEditingMemo(null); setIsMemoModalOpen(true); }
+          if (activeTab === '股票') { setEditingStock(null); setIsStockModalOpen(true); }
+        }}
+        className={`absolute bottom-24 right-6 w-14 h-14 bg-[#5C7FB0] text-white rounded-full flex items-center justify-center shadow-[0_8px_20px_rgba(92,127,176,0.4)] hover:bg-[#4A6B8A] transition-colors active:scale-95 z-30 ${activeTab === '總資產' || activeTab === '帳務' ? 'hidden' : ''}`}
+      >
+        <Plus size={32} strokeWidth={2.5} />
+      </button>
+
+      {/* Modals */}
+      <AnimatePresence>
+        {isSettingsModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white rounded-[2.5rem] w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Settings size={24} className="text-[#6B8EAD]" /> 系統設定</h2>
+                <button onClick={() => setIsSettingsModalOpen(false)} className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 shadow-sm"><X size={20} /></button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Gemini API Key</label>
+                  <input type="password" value={geminiKey} onChange={e => { setGeminiKey(e.target.value); localStorage.setItem('gemini_api_key', e.target.value); }} className="w-full border border-gray-200 rounded-2xl px-4 py-3 outline-none focus:border-[#6B8EAD] focus:ring-2 focus:ring-[#6B8EAD]/20 transition-all font-mono text-sm" placeholder="AI Studio API Key" />
+                  <p className="text-xs text-gray-400 mt-2">用於啟用 AI 語音記帳與股票更新功能，金鑰僅儲存於本地瀏覽器。</p>
+                </div>
+                <div className="pt-4 border-t border-gray-100 space-y-3">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">資料管理</label>
+                  <button onClick={exportAllDataJSON} className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 py-3 rounded-2xl font-bold shadow-sm hover:bg-gray-100 transition-colors active:scale-95">
+                    <Download size={20} className="text-[#6B8EAD]" /> 匯出備份資料 (JSON)
+                  </button>
+                  <button onClick={exportTransactionsXLSX} className="w-full flex items-center justify-center gap-2 bg-gray-50 text-gray-700 py-3 rounded-2xl font-bold shadow-sm hover:bg-gray-100 transition-colors active:scale-95">
+                    <Download size={20} className="text-emerald-500" /> 匯出 Excel 報表 (XLSX)
+                  </button>
+                  <button onClick={() => setIsConfirmClearAllModalOpen(true)} className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-500 py-3 rounded-2xl font-bold shadow-sm hover:bg-red-100 transition-colors active:scale-95">
+                    <Trash2 size={20} /> 清除所有本地資料
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isConfirmClearAllModalOpen && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-white rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle size={32} className="text-red-500" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 mb-2">確定要清除所有資料嗎？</h2>
+              <p className="text-gray-500 mb-6">此操作將會刪除所有帳務、網銀、信用卡、備忘錄與股票資料，且無法復原。</p>
+              <div className="flex gap-3">
+                <button onClick={() => setIsConfirmClearAllModalOpen(false)} className="flex-1 py-3 rounded-2xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">取消</button>
+                <button onClick={clearAllData} className="flex-1 py-3 rounded-2xl font-bold text-white bg-red-500 hover:bg-red-600 transition-colors shadow-lg shadow-red-500/30">確定清除</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <CenterModalWrapper isOpen={isConfirmClearModalOpen} onClose={() => setIsConfirmClearModalOpen(false)} title="清除所有紀錄">
+        <div className="space-y-6">
+          <p className="text-gray-700 text-center">確定要清除所有收支紀錄嗎？此動作無法復原。</p>
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setIsConfirmClearModalOpen(false)}
+              className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-2xl font-bold shadow-sm hover:bg-gray-200 transition-colors active:scale-95"
+            >
+              取消
+            </button>
+            <button 
+              onClick={clearAllTransactions}
+              className="flex-1 bg-red-500 text-white py-3 rounded-2xl font-bold shadow-sm hover:bg-red-600 transition-colors active:scale-95"
+            >
+              確定清除
+            </button>
+          </div>
+        </div>
+      </CenterModalWrapper>
+
+      <CenterModalWrapper isOpen={isMonthPickerOpen} onClose={() => setIsMonthPickerOpen(false)} title="選擇月份">
+        <div className="flex flex-col items-center">
+          <div className="flex items-center justify-between w-full mb-6 px-2">
+            <button onClick={() => setPickerYear(y => y - 1)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors active:scale-95">
+              <ChevronLeft size={24} />
+            </button>
+            <span className="text-2xl font-black text-gray-600 tracking-wider" style={{ fontFamily: '"Zen Maru Gothic", sans-serif' }}>{pickerYear}年</span>
+            <button onClick={() => setPickerYear(y => y + 1)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors active:scale-95">
+              <ChevronRight size={24} />
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-3 w-full">
+            {Array.from({ length: 12 }, (_, i) => {
+              const monthDate = new Date(pickerYear, i, 1);
+              const isSelected = isSameMonth(monthDate, currentDate);
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setCurrentDate(monthDate);
+                    setIsMonthPickerOpen(false);
+                  }}
+                  className={`py-4 rounded-2xl font-bold text-lg transition-colors active:scale-95 ${
+                    isSelected 
+                      ? 'bg-[#5C7FB0] text-white shadow-md' 
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                  style={{ fontFamily: '"Zen Maru Gothic", sans-serif' }}
+                >
+                  {i + 1}月
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </CenterModalWrapper>
+
+      <CenterModalWrapper isOpen={isAlertModalOpen} onClose={() => setIsAlertModalOpen(false)} title="提示">
+        <div className="space-y-6">
+          <p className="text-gray-700 text-center">{alertMessage}</p>
+          <button 
+            onClick={() => setIsAlertModalOpen(false)}
+            className="w-full bg-[#5C7FB0] text-white py-3 rounded-2xl font-bold shadow-sm hover:bg-[#4A6B8A] transition-colors active:scale-95"
+          >
+            確定
+          </button>
+        </div>
+      </CenterModalWrapper>
+
+      {isTxModalOpen && <TxModal />}
+      {isProjectModalOpen && <ProjectModal />}
+      {isCardModalOpen && <CardModal />}
+      {isBankModalOpen && <BankModal />}
+      {isMemoModalOpen && <MemoModal />}
+      {isRecordModalOpen && <RecordModal />}
+      {isStockModalOpen && <StockModal />}
+    </div>
+  );
+}
+
+// --- Reusable Components ---
+function NavButton({ icon: Icon, label, isActive, onClick }: { icon: any, label: string, isActive: boolean, onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex flex-col items-center justify-center gap-1 w-12">
+      <Icon size={24} strokeWidth={isActive ? 2.5 : 2} className={`transition-colors ${isActive ? 'text-[#5C7FB0]' : 'text-gray-400'}`} />
+      <span className={`text-[10px] font-bold transition-colors ${isActive ? 'text-[#5C7FB0]' : 'text-gray-400'}`}>{label}</span>
+    </button>
+  );
+}
+
+function CenterModalWrapper({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div 
+          key="backdrop"
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }} 
+          onClick={onClose} 
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" 
+        />
+      )}
+      {isOpen && (
+        <motion.div 
+          key="modal"
+          initial={{ opacity: 0, scale: 0.95, y: '-50%', x: '-50%' }} 
+          animate={{ opacity: 1, scale: 1, y: '-50%', x: '-50%' }} 
+          exit={{ opacity: 0, scale: 0.95, y: '-50%', x: '-50%' }} 
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }} 
+          className="fixed top-1/2 left-1/2 w-[90%] max-w-sm bg-white rounded-[2rem] p-6 z-[70] shadow-2xl max-h-[85vh] overflow-y-auto no-scrollbar"
+        >
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-gray-800">{title}</h2>
+            <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-200"><X size={20} /></button>
+          </div>
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+</script>
+</body>
+</html>
